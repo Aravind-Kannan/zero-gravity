@@ -485,8 +485,8 @@ export default function App() {
   const trackedCount = satellitesMaster.current.length;
   const visibleCount = filteredSatellites.length;
 
-  const inspectContent = selectedDisplay ? (
-    <div className="zg-inspect zg-inspect--panel">
+  const inspectSummary = selectedDisplay ? (
+    <div className="zg-inspect zg-inspect--summary">
       <div className="zg-row zg-row--start">
         <span className="zg-flag" aria-hidden="true">{getSatelliteFlag(selectedDisplay)}</span>
         <span className={`zg-tag zg-tag--${selectedDisplay.group || 'visual'}`}>
@@ -536,32 +536,39 @@ export default function App() {
           Inclination {selectedDisplay.inclination}°
         </p>
       )}
+    </div>
+  ) : null;
 
-      {stationCrew.craft && (
-        <div className="zg-inspect__crew">
-          <div className="zg-inspect__crew-head">
-            <h4 className="zg-inspect__crew-title">
-              Crew onboard · {stationCrew.craft}
-            </h4>
-            <span className="zg-tag">{stationCrew.members.length}</span>
-          </div>
-          {stationCrew.members.length > 0 ? (
-            <div className="zg-inspect__crew-list" role="list">
-              {stationCrew.members.map((person) => (
-                <div key={person.name} className="zg-crew-row zg-crew-row--compact" role="listitem">
-                  <span className="zg-flag zg-shrink-0" aria-hidden="true">{getCrewFlag(person)}</span>
-                  <span className="zg-crew-row__name zg-truncate">{person.name}</span>
-                </div>
-              ))}
+  const inspectCrewPane = stationCrew.craft ? (
+    <div className="zg-inspect__crew zg-inspect__crew--pane">
+      <div className="zg-inspect__crew-head">
+        <h4 className="zg-inspect__crew-title">
+          Crew onboard · {stationCrew.craft}
+        </h4>
+        <span className="zg-tag">{stationCrew.members.length}</span>
+      </div>
+      {stationCrew.members.length > 0 ? (
+        <div className="zg-inspect__crew-list" role="list">
+          {stationCrew.members.map((person) => (
+            <div key={person.name} className="zg-crew-row zg-crew-row--compact" role="listitem">
+              <span className="zg-flag zg-shrink-0" aria-hidden="true">{getCrewFlag(person)}</span>
+              <span className="zg-crew-row__name zg-truncate">{person.name}</span>
             </div>
-          ) : (
-            <p className="zg-panel__hint zg-inspect__crew-empty">
-              {crew.length > 0 ? 'No roster for this station' : 'Loading roster…'}
-            </p>
-          )}
+          ))}
         </div>
+      ) : (
+        <p className="zg-panel__hint zg-inspect__crew-empty">
+          {crew.length > 0 ? 'No roster for this station' : 'Loading roster…'}
+        </p>
       )}
     </div>
+  ) : null;
+
+  const inspectContent = selectedDisplay ? (
+    <>
+      {inspectSummary}
+      {inspectCrewPane}
+    </>
   ) : (
     <div className="zg-inspect-empty">
       <Compass className="zg-icon zg-icon-md zg-inspect-empty__icon" aria-hidden="true" />
@@ -667,7 +674,7 @@ export default function App() {
           </span>
         )}
       </div>
-      <div className="zg-panel__body">
+      <div className="zg-panel__body zg-panel__body--inspect">
         {inspectContent}
       </div>
     </>

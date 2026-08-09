@@ -12,12 +12,12 @@ NORAD TLE data and ISS crew info — polled in the background, cached in Valkey,
 
 <br />
 
-```
-   ┌─────────────────────────────────────────┐
-   │  🌍  track orbit  ·  read telemetry  ·  │
-   │      watch the sky move in real time    │
-   └─────────────────────────────────────────┘
-```
+<pre>
+┌─────────────────────────────────────────┐
+│  🌍  track orbit  ·  read telemetry  ·  │
+│      watch the sky move in real time    │
+└─────────────────────────────────────────┘
+</pre>
 
 </div>
 
@@ -32,7 +32,7 @@ NORAD TLE data and ISS crew info — polled in the background, cached in Valkey,
 - 📡 Shows telemetry for the selected satellite (lat, lng, altitude, velocity when available)
 - 👨‍🚀 Lists astronauts currently in orbit (ISS + Tiangong when data is present)
 
-📚 Data sources: [CelesTrak](https://celestrak.org/) (NORAD groups) and [Open Notify](http://open-notify.org/) (astronaut roster).
+📚 Data sources: [CelesTrak](https://celestrak.org/) (NORAD groups); crew roster from [Open Notify](http://open-notify.org/) with [ISS APIs](https://github.com/corquaid/international-space-station-APIs) fallback.
 
 ---
 
@@ -55,7 +55,7 @@ CelesTrak / Open Notify
 
 | Service   | Role |
 |-----------|------|
-| `cache`   | Managed Valkey 7.2. Keys expire after 60s. |
+| `cache`   | Managed Valkey 7.2. Keys expire after 300s. |
 | `ingestor`| Polls external APIs every 30s, normalizes JSON, writes to cache. |
 | `api`     | Express. Reads cache, runs orbital propagation, exposes REST endpoints. |
 | `frontend`| Serves the built SPA and proxies `/api/*` to the api service. |
@@ -154,9 +154,7 @@ The root `zerops.yaml` mirrors the service definitions. Cache is provisioned as 
 
 ## 🎨 Design
 
-The UI uses Hallmark **Midnight** — cool dark canvas, warm amber accents, Syne + Figtree. See [`design.md`](design.md). Tokens: `frontend/tokens.css`.
-
-Fonts: **Syne** (display), **Figtree** (everything else).
+Terminal-style UI — near-black canvas, phosphor green accent, JetBrains Mono throughout. Hallmark **Terminal** mood redesign. See [`design.md`](design.md). Tokens: `frontend/tokens.css`.
 
 ---
 
