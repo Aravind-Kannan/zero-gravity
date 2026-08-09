@@ -1,19 +1,30 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Globe from 'react-globe.gl';
-import { 
-  Globe as GlobeIcon, 
-  Satellite, 
-  Users, 
-  Search, 
-  Compass, 
-  RefreshCw, 
+import {
+  Satellite,
+  Users,
+  Search,
+  Compass,
+  RefreshCw,
   Radio,
   ShieldCheck,
-  Zap,
-  Navigation
 } from 'lucide-react';
+import {
+  createDayNightGlobeMaterial,
+  updateGlobeSun,
+  updateGlobeRotation,
+} from './globeDayNight.js';
 
-// Helper function to resolve Satellite Country Flag Emoji
+/* Globe colors — mirror frontend/tokens.css (Midnight) */
+const GLOBE = {
+  atmosphere: '#c4893a',
+  station: '#e8a04a',
+  satellite: '#8a7355',
+  selected: '#ebeaf0',
+  ringIss: '#e07040',
+  ringStation: '#e8a04a',
+};
+
 function getSatelliteFlag(sat) {
   const name = (sat?.name || '').toUpperCase();
   if (name.includes('ISS') || name.includes('ZARYA')) return '🌐';
@@ -28,7 +39,6 @@ function getSatelliteFlag(sat) {
   return '🇺🇸';
 }
 
-// Helper function to resolve Astronaut Country Flag Emoji
 function getCrewFlag(person) {
   const name = (person?.name || '').toLowerCase();
   const craft = (person?.craft || '').toLowerCase();
@@ -46,39 +56,48 @@ export default function App() {
   const globeEl = useRef();
   const [dimensions, setDimensions] = useState({
     width: typeof window !== 'undefined' ? window.innerWidth : 1200,
-    height: typeof window !== 'undefined' ? window.innerHeight : 800
+    height: typeof window !== 'undefined' ? window.innerHeight : 800,
   });
 
   const [satellites, setSatellites] = useState([]);
   const [crew, setCrew] = useState([]);
   const [source, setSource] = useState('connecting');
   const [selectedSat, setSelectedSat] = useState(null);
-  const [filter, setFilter] = useState('all'); // all, station, visual
+  const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [lastSync, setLastSync] = useState(new Date());
   const [autoRotate, setAutoRotate] = useState(true);
+  const [globeReady, setGlobeReady] = useState(false);
+  const [globeMaterial, setGlobeMaterial] = useState(null);
+  const [mobileView, setMobileView] = useState('globe');
 
-  // Responsive window resize handler
+  const configureGlobeControls = (rotate) => {
+    if (!globeEl.current) return;
+    const controls = globeEl.current.controls?.();
+    if (!controls) return;
+    controls.autoRotate = rotate;
+    controls.autoRotateSpeed = 0.6;
+  };
+
   useEffect(() => {
     const handleResize = () => {
       setDimensions({
         width: window.innerWidth,
-        height: window.innerHeight
+        height: window.innerHeight,
       });
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Fetch telemetry & crew from API endpoint
   const fetchData = async () => {
     try {
       const [satRes, crewRes] = await Promise.all([
         fetch('/api/satellites').then(r => r.json()),
-        fetch('/api/crew').then(r => r.json())
+        fetch('/api/crew').then(r => r.json()),
       ]);
 
-      if (satRes && satRes.satellites) {
+      if (satRes?.satellites) {
         setSatellites(satRes.satellites);
         setSource(satRes.source || 'live');
         if (!selectedSat && satRes.satellites.length > 0) {
@@ -90,7 +109,7 @@ export default function App() {
         }
       }
 
-      if (crewRes && crewRes.crew) {
+      if (crewRes?.crew) {
         setCrew(crewRes.crew);
       }
 
@@ -106,26 +125,51 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Configure Globe camera auto rotation
   useEffect(() => {
-    if (globeEl.current) {
-      globeEl.current.controls().autoRotate = autoRotate;
-      globeEl.current.controls().autoRotateSpeed = 0.6;
+    if (globeReady) {
+      configureGlobeControls(autoRotate);
     }
-  }, [autoRotate]);
+  }, [autoRotate, globeReady]);
 
-  // Filtered satellite dataset
+  useEffect(() => {
+    let cancelled = false;
+    createDayNightGlobeMaterial().then((material) => {
+      if (!cancelled) setGlobeMaterial(material);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!globeMaterial) return;
+    updateGlobeSun(globeMaterial, lastSync);
+  }, [globeMaterial, lastSync]);
+
+  useEffect(() => {
+    if (!globeReady || !globeMaterial) return;
+    let frame;
+    const tick = () => {
+      const pov = globeEl.current?.pointOfView?.();
+      if (pov) updateGlobeRotation(globeMaterial, pov.lng, pov.lat);
+      frame = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => cancelAnimationFrame(frame);
+  }, [globeReady, globeMaterial]);
+
+  const handleGlobeZoom = useCallback(({ lng, lat }) => {
+    updateGlobeRotation(globeMaterial, lng, lat);
+  }, [globeMaterial]);
+
   const filteredSatellites = useMemo(() => {
     return satellites.filter(s => {
       const matchesFilter = filter === 'all' || s.group === filter;
-      const matchesSearch = !search || 
-        s.name.toLowerCase().includes(search.toLowerCase()) || 
+      const matchesSearch = !search ||
+        s.name.toLowerCase().includes(search.toLowerCase()) ||
         String(s.catId).includes(search);
       return matchesFilter && matchesSearch;
     });
   }, [satellites, filter, search]);
 
-  // Prepare orbital trajectory arcs for 3D Globe
   const pathData = useMemo(() => {
     return filteredSatellites.slice(0, 80).map(sat => {
       const points = [];
@@ -142,13 +186,12 @@ export default function App() {
 
       return {
         id: sat.id,
-        color: sat.group === 'station' ? '#ff0055' : '#00f0ff',
-        points
+        color: sat.group === 'station' ? GLOBE.station : GLOBE.satellite,
+        points,
       };
     });
   }, [filteredSatellites]);
 
-  // Pulsing target rings for space stations
   const ringData = useMemo(() => {
     return satellites
       .filter(s => s.group === 'station' || s.name.includes('ISS') || s.name.includes('TIANGONG'))
@@ -158,83 +201,224 @@ export default function App() {
         maxR: 8,
         propagationSpeed: 3,
         repeatPeriod: 1500,
-        color: s.name.includes('ISS') ? '#ff0055' : '#10b981'
+        color: s.name.includes('ISS') ? GLOBE.ringIss : GLOBE.ringStation,
       }));
   }, [satellites]);
 
-  // Center camera on chosen satellite
-  const focusSat = (sat) => {
+  const focusSat = useCallback((sat) => {
     setSelectedSat(sat);
     if (globeEl.current && sat) {
       globeEl.current.pointOfView(
         { lat: sat.lat, lng: sat.lng, altitude: 1.8 },
-        1200
+        1200,
       );
     }
+  }, []);
+
+  const handleFilterChange = (id) => {
+    setFilter(id);
   };
 
   const stationsCount = satellites.filter(s => s.group === 'station').length;
   const visualCount = satellites.filter(s => s.group === 'visual').length;
 
+  const renderMarker = useCallback((d) => {
+    const el = document.createElement('div');
+    const isSelected = selectedSat?.id === d.id;
+    const isStation = d.group === 'station';
+    el.className = [
+      'zg-marker',
+      isSelected ? 'is-selected' : '',
+      isStation ? 'is-station' : '',
+    ].filter(Boolean).join(' ');
+    el.innerHTML = `<span>${getSatelliteFlag(d)}</span><span>${d.name}</span>`;
+    el.onclick = (e) => {
+      e.stopPropagation();
+      focusSat(d);
+    };
+    return el;
+  }, [selectedSat, focusSat]);
+
+  const trackPanel = (
+    <>
+      <div className="zg-input-wrap">
+        <Search className="w-4 h-4 zg-icon" aria-hidden="true" />
+        <input
+          type="search"
+          className="zg-input"
+          placeholder="Name or NORAD ID"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          aria-label="Search satellites"
+        />
+      </div>
+
+      <div className="zg-tabs" role="tablist" aria-label="Satellite filters">
+        {[
+          { id: 'all', label: `All ${satellites.length}` },
+          { id: 'station', label: `Sta ${stationsCount}` },
+          { id: 'visual', label: `Vis ${visualCount}` },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={filter === tab.id}
+            className={`zg-tab${filter === tab.id ? ' is-active' : ''}`}
+            onClick={(e) => {
+              handleFilterChange(tab.id);
+              e.currentTarget.focus({ preventScroll: true });
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {selectedSat && (
+        <div className="zg-inspect">
+          <div className="flex items-center gap-2">
+            <span className="text-base" aria-hidden="true">{getSatelliteFlag(selectedSat)}</span>
+            <span className={`zg-tag${selectedSat.group === 'station' ? ' zg-tag--station' : ''}`}>
+              {selectedSat.group}
+            </span>
+          </div>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="zg-inspect__name">{selectedSat.name}</h3>
+              <p className="zg-panel__hint">NORAD #{selectedSat.catId || selectedSat.id}</p>
+            </div>
+            <button
+              type="button"
+              className="zg-btn zg-btn--icon zg-btn--ghost"
+              onClick={() => focusSat(selectedSat)}
+              aria-label="Lock camera on target"
+            >
+              <Compass className="w-4 h-4 zg-icon" />
+            </button>
+          </div>
+          <div className="zg-grid">
+            <div className="zg-stat">
+              <div className="zg-stat__label">Latitude</div>
+              <div className="zg-stat__value">{selectedSat.lat?.toFixed(4)}°</div>
+            </div>
+            <div className="zg-stat">
+              <div className="zg-stat__label">Longitude</div>
+              <div className="zg-stat__value">{selectedSat.lng?.toFixed(4)}°</div>
+            </div>
+            <div className="zg-stat">
+              <div className="zg-stat__label">Altitude</div>
+              <div className="zg-stat__value">{selectedSat.alt ?? '—'} km</div>
+            </div>
+            <div className="zg-stat">
+              <div className="zg-stat__label">Velocity</div>
+              <div className="zg-stat__value">
+                {selectedSat.velocity != null ? `${selectedSat.velocity} km/s` : '—'}
+              </div>
+            </div>
+          </div>
+          {selectedSat.inclination != null && (
+            <p className="zg-panel__hint mt-2">
+              Inclination {selectedSat.inclination}°
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="zg-list" role="list">
+        <p className="zg-panel__hint px-1">
+          {filteredSatellites.length} objects in view
+        </p>
+        {filteredSatellites.slice(0, 50).map(sat => (
+          <button
+            key={sat.id}
+            type="button"
+            role="listitem"
+            className={`zg-list-item${selectedSat?.id === sat.id ? ' is-active' : ''}`}
+            onClick={() => focusSat(sat)}
+          >
+            <span className="flex items-center gap-2 min-w-0 truncate">
+              <span aria-hidden="true">{getSatelliteFlag(sat)}</span>
+              <span className="zg-sat-name truncate">{sat.name}</span>
+            </span>
+            <span className={`zg-tag${sat.group === 'station' ? ' zg-tag--station' : ''}`}>
+              {sat.alt}km
+            </span>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+
+  const crewPanel = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="zg-panel__head">Crew roster</h2>
+        <span className="zg-tag">{crew.length} onboard</span>
+      </div>
+      <div className="zg-list">
+        {crew.length > 0 ? (
+          crew.map((ast, idx) => (
+            <div key={idx} className="zg-crew-row">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-base shrink-0" aria-hidden="true">{getCrewFlag(ast)}</span>
+                <div className="min-w-0">
+                  <div className="zg-crew-row__name truncate">{ast.name}</div>
+                  <div className="zg-panel__hint">Astronaut</div>
+                </div>
+              </div>
+              <span className="zg-tag">{ast.craft || 'ISS'}</span>
+            </div>
+          ))
+        ) : (
+          <p className="zg-panel__hint p-2 text-center">Loading roster…</p>
+        )}
+      </div>
+    </>
+  );
+
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#05070f] text-slate-100 font-sans select-none">
-      
-      {/* BACKGROUND 3D GLOBE CANVAS */}
-      <div className="absolute inset-0 z-0">
+    <div className="zg-shell">
+      {/* Hallmark · genre: atmospheric · macrostructure: Workbench · theme: Midnight · enrichment: none · nav: N9 · footer: Ft2 */}
+
+      <div className="zg-canvas" aria-hidden="true">
         <Globe
           ref={globeEl}
           width={dimensions.width}
           height={dimensions.height}
-          globeImageUrl="https://unpkg.com/three-globe/example/img/earth-night.jpg"
-          bumpImageUrl="https://unpkg.com/three-globe/example/img/earth-topology.png"
-          backgroundImageUrl="https://unpkg.com/three-globe/example/img/night-sky.png"
-          showAtmosphere={true}
-          atmosphereColor="#00f0ff"
-          atmosphereAltitude={0.2}
-
-          // Points Layer
+          globeMaterial={globeMaterial}
+          backgroundImageUrl="/textures/night-sky.png"
+          onGlobeReady={() => {
+            setGlobeReady(true);
+            configureGlobeControls(autoRotate);
+          }}
+          onZoom={handleGlobeZoom}
+          showAtmosphere
+          atmosphereColor={GLOBE.atmosphere}
+          atmosphereAltitude={0.18}
           pointsData={filteredSatellites}
           pointLat="lat"
           pointLng="lng"
           pointAltitude={d => Math.min(Math.max((d.alt || 400) / 2000, 0.05), 0.5)}
-          pointColor={d => (d.id === selectedSat?.id ? '#ffffff' : d.group === 'station' ? '#ff0055' : '#00f0ff')}
+          pointColor={d => (d.id === selectedSat?.id ? GLOBE.selected : d.group === 'station' ? GLOBE.station : GLOBE.satellite)}
           pointRadius={d => (d.id === selectedSat?.id ? 0.9 : d.group === 'station' ? 0.65 : 0.4)}
           pointResolution={16}
           onPointClick={focusSat}
-
-          // HTML Elements Marker Layer with Flags
           htmlElementsData={filteredSatellites.filter(s => s.group === 'station' || s.id === selectedSat?.id)}
           htmlLat="lat"
           htmlLng="lng"
           htmlAltitude={d => Math.min(Math.max((d.alt || 400) / 2000, 0.05), 0.5) + 0.03}
-          htmlElement={d => {
-            const el = document.createElement('div');
-            const isSelected = selectedSat?.id === d.id;
-            const flag = getSatelliteFlag(d);
-            el.className = 'flex items-center gap-1.5 cursor-pointer transform -translate-x-1/2 -translate-y-1/2';
-            el.innerHTML = `
-              <div class="px-2 py-1 bg-slate-950/90 border ${isSelected ? 'border-cyan-400 text-cyan-300 shadow-[0_0_12px_#22d3ee]' : 'border-rose-500/60 text-rose-300'} rounded-xl text-xs font-mono flex items-center gap-1.5 backdrop-blur-md">
-                <span class="text-sm">${flag}</span>
-                <span class="font-bold text-[11px]">${d.name}</span>
-              </div>
-            `;
-            el.onclick = () => focusSat(d);
-            return el;
-          }}
-
-          // Orbital Trajectory Lines
+          htmlElement={renderMarker}
           pathsData={pathData}
           pathPoints="points"
           pathPointLat={p => p[0]}
           pathPointLng={p => p[1]}
           pathPointAlt={p => p[2]}
           pathColor="color"
-          pathStroke={1.2}
+          pathStroke={1.1}
           pathDashLength={0.15}
           pathDashGap={0.05}
           pathDashAnimateTime={5000}
-
-          // Pulsing Target Rings
           ringsData={ringData}
           ringColor="color"
           ringMaxRadius="maxR"
@@ -243,253 +427,141 @@ export default function App() {
         />
       </div>
 
-      {/* TOP HEADER / TELEMETRY HUD */}
-      <header className="absolute top-4 left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-4 p-4 glass-panel rounded-2xl border border-cyan-500/20 shadow-2xl">
-        <div className="flex items-center gap-3">
-          <div className="relative p-2.5 bg-cyan-950/60 border border-cyan-500/40 rounded-xl text-cyan-400 glow-cyan">
-            <Radio className="w-6 h-6 animate-pulse" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-cyan-300 font-mono">
-                ZERO GRAVITY
-              </h1>
-              <span className="px-2 py-0.5 text-[10px] font-mono tracking-widest uppercase bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded-full">
-                Orbital HQ
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 font-mono flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              Live NORAD Telemetry & Astronaut Roster
-            </p>
-          </div>
+      <header className="zg-nav">
+        <div className="zg-brand">
+          <h1 className="zg-brand__title">ZeroGravity</h1>
+          <p className="zg-brand__sub">Live NORAD telemetry</p>
         </div>
 
-        {/* METRICS HUD CHIPS */}
-        <div className="flex items-center flex-wrap gap-3 font-mono text-xs">
-          <div className="flex items-center gap-2 px-3 py-2 bg-slate-900/80 border border-slate-700/60 rounded-xl">
-            <Satellite className="w-4 h-4 text-cyan-400" />
-            <span className="text-slate-400">TRACKED:</span>
-            <span className="font-bold text-white text-sm">{satellites.length}</span>
-          </div>
-
-          <div className="flex items-center gap-2 px-3 py-2 bg-slate-900/80 border border-slate-700/60 rounded-xl">
-            <Radio className="w-4 h-4 text-rose-400" />
-            <span className="text-slate-400">STATIONS:</span>
-            <span className="font-bold text-rose-300 text-sm">{stationsCount}</span>
-          </div>
-
-          <div className="flex items-center gap-2 px-3 py-2 bg-slate-900/80 border border-slate-700/60 rounded-xl">
-            <Users className="w-4 h-4 text-emerald-400" />
-            <span className="text-slate-400">CREW:</span>
-            <span className="font-bold text-emerald-300 text-sm">{crew.length}</span>
-          </div>
-
-          <div className="flex items-center gap-2 px-3 py-2 bg-slate-900/80 border border-slate-700/60 rounded-xl">
-            <ShieldCheck className="w-4 h-4 text-cyan-400" />
-            <span className="text-slate-400">CACHE:</span>
-            <span className={`font-bold ${source === 'cache' ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {source.toUpperCase()}
-            </span>
-          </div>
-
-          <button 
+        <div className="zg-metrics" aria-label="Summary metrics">
+          <span className="zg-metric">
+            <Satellite className="w-3.5 h-3.5 zg-icon zg-icon--accent" aria-hidden="true" />
+            <strong>{satellites.length}</strong>
+            <span className="zg-metric__label">tracked</span>
+          </span>
+          <span className="zg-metric">
+            <Radio className="w-3.5 h-3.5 zg-icon" aria-hidden="true" />
+            <strong>{stationsCount}</strong>
+            <span className="zg-metric__label">stations</span>
+          </span>
+          <span className="zg-metric zg-metric--live">
+            <Users className="w-3.5 h-3.5 zg-icon" aria-hidden="true" />
+            <strong>{crew.length}</strong>
+            <span className="zg-metric__label">crew</span>
+          </span>
+          <span className="zg-metric">
+            <ShieldCheck className="w-3.5 h-3.5 zg-icon" aria-hidden="true" />
+            <span className="zg-metric__label">source</span>
+            <span className="zg-metric__value">{source}</span>
+          </span>
+          <button
+            type="button"
+            className="zg-btn zg-btn--icon zg-btn--ghost"
             onClick={fetchData}
-            title="Force telemetry sync"
-            className="p-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl transition-all"
+            aria-label="Refresh telemetry"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className="w-4 h-4 zg-icon" />
           </button>
+        </div>
+
+        <div className="zg-nav__actions">
+          <button
+            type="button"
+            className="zg-btn zg-btn--icon zg-btn--ghost"
+            onClick={fetchData}
+            aria-label="Refresh telemetry"
+          >
+            <RefreshCw className="w-4 h-4 zg-icon" />
+          </button>
+        </div>
+
+        <div className="zg-mobile-metrics" aria-label="Summary metrics">
+          <span className="zg-mobile-metric">
+            <Satellite className="w-3.5 h-3.5 zg-icon zg-icon--accent" aria-hidden="true" />
+            <strong>{satellites.length}</strong>
+            <span>tracked</span>
+          </span>
+          <span className="zg-mobile-metric">
+            <Radio className="w-3.5 h-3.5 zg-icon" aria-hidden="true" />
+            <strong>{stationsCount}</strong>
+            <span>stations</span>
+          </span>
+          <span className="zg-mobile-metric zg-mobile-metric--live">
+            <Users className="w-3.5 h-3.5 zg-icon" aria-hidden="true" />
+            <strong>{crew.length}</strong>
+            <span>crew</span>
+          </span>
+          <span className="zg-mobile-metric">
+            <ShieldCheck className="w-3.5 h-3.5 zg-icon" aria-hidden="true" />
+            <span className="zg-mobile-metric__value">{source}</span>
+          </span>
         </div>
       </header>
 
-      {/* LEFT PANEL: SEARCH & TELEMETRY INSPECTOR */}
-      <div className="absolute top-28 left-4 z-10 w-80 max-h-[calc(100vh-140px)] flex flex-col gap-4 overflow-hidden">
-        
-        {/* Search & Filter Tabs */}
-        <div className="glass-panel p-3.5 rounded-2xl flex flex-col gap-3">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search satellite name or NORAD ID..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-950/80 border border-slate-700/60 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-mono"
-            />
-          </div>
-
-          <div className="flex gap-1.5 p-1 bg-slate-950/60 rounded-xl border border-slate-800">
-            {[
-              { id: 'all', label: `ALL (${satellites.length})` },
-              { id: 'station', label: `STATIONS (${stationsCount})` },
-              { id: 'visual', label: `VISUAL (${visualCount})` }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setFilter(tab.id)}
-                className={`flex-1 py-1.5 text-[10px] font-mono font-medium rounded-lg transition-all ${
-                  filter === tab.id 
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm' 
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+      <aside
+        className={`zg-rail zg-rail--left${mobileView !== 'track' ? ' is-hidden' : ''}`}
+        aria-label="Satellite tracking"
+      >
+        <div className="zg-panel flex-1 min-h-0 overflow-hidden">
+          {trackPanel}
         </div>
+      </aside>
 
-        {/* Selected Satellite Telemetry Inspector */}
-        {selectedSat ? (
-          <div className="glass-panel p-4 rounded-2xl border-l-4 border-l-cyan-400 flex flex-col gap-3 font-mono shadow-2xl">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{getSatelliteFlag(selectedSat)}</span>
-                  <span className="px-2 py-0.5 text-[9px] uppercase tracking-wider bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded">
-                    {selectedSat.group}
-                  </span>
-                </div>
-                <h3 className="text-base font-bold text-white mt-1 flex items-center gap-2">
-                  {selectedSat.name}
-                </h3>
-                <p className="text-[11px] text-slate-400">NORAD ID: #{selectedSat.catId || selectedSat.id}</p>
-              </div>
-              <button
-                onClick={() => focusSat(selectedSat)}
-                className="p-2.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs flex items-center gap-1 transition-all"
-                title="Lock camera on target"
-              >
-                <Compass className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-800">
-              <div className="p-2 bg-slate-900/60 rounded-lg border border-slate-800">
-                <div className="text-[10px] text-slate-400">LATITUDE</div>
-                <div className="font-bold text-cyan-300">{selectedSat.lat?.toFixed(4)}°</div>
-              </div>
-              <div className="p-2 bg-slate-900/60 rounded-lg border border-slate-800">
-                <div className="text-[10px] text-slate-400">LONGITUDE</div>
-                <div className="font-bold text-cyan-300">{selectedSat.lng?.toFixed(4)}°</div>
-              </div>
-              <div className="p-2 bg-slate-900/60 rounded-lg border border-slate-800">
-                <div className="text-[10px] text-slate-400">ALTITUDE</div>
-                <div className="font-bold text-emerald-400">{selectedSat.alt} km</div>
-              </div>
-              <div className="p-2 bg-slate-900/60 rounded-lg border border-slate-800">
-                <div className="text-[10px] text-slate-400">VELOCITY</div>
-                <div className="font-bold text-emerald-400">{selectedSat.velocity || 7.66} km/s</div>
-              </div>
-            </div>
-
-            <div className="text-[11px] text-slate-400 flex justify-between pt-1">
-              <span>INCLINATION: <strong className="text-white">{selectedSat.inclination}°</strong></span>
-              <span>ORBITAL PERIOD: <strong className="text-white">~92 min</strong></span>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Directory List of Satellites */}
-        <div className="glass-panel p-3 rounded-2xl flex-1 overflow-y-auto max-h-64 flex flex-col gap-1.5">
-          <div className="text-[10px] font-mono text-slate-400 px-1 py-0.5 uppercase tracking-wider">
-            Live Satellites Directory ({filteredSatellites.length})
-          </div>
-          {filteredSatellites.slice(0, 50).map(sat => (
-            <button
-              key={sat.id}
-              onClick={() => focusSat(sat)}
-              className={`flex items-center justify-between p-2 rounded-xl text-left font-mono text-xs transition-all ${
-                selectedSat?.id === sat.id 
-                  ? 'bg-cyan-500/20 text-white border border-cyan-500/40' 
-                  : 'hover:bg-slate-800/40 text-slate-300'
-              }`}
-            >
-              <div className="flex items-center gap-2 truncate pr-2">
-                <span className="text-base select-none">{getSatelliteFlag(sat)}</span>
-                <div className="truncate">
-                  <div className="font-medium truncate">{sat.name}</div>
-                  <div className="text-[10px] text-slate-400">#{sat.catId || sat.id}</div>
-                </div>
-              </div>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                sat.group === 'station' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-              }`}>
-                {sat.alt}km
-              </span>
-            </button>
-          ))}
+      <aside
+        className={`zg-rail zg-rail--right${mobileView === 'crew' ? ' is-open' : ''}`}
+        aria-label="Crew roster"
+      >
+        <div className="zg-panel flex-1 min-h-0 overflow-hidden">
+          {crewPanel}
         </div>
-      </div>
+      </aside>
 
-      {/* RIGHT PANEL: ASTRONAUT CREW ROSTER */}
-      <div className="absolute top-28 right-4 z-10 w-72 glass-panel p-4 rounded-2xl flex flex-col gap-3 font-mono">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-emerald-400" />
-            <h2 className="text-xs font-bold text-white uppercase tracking-wider">ISS Crew Roster</h2>
-          </div>
-          <span className="px-2 py-0.5 text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-full font-bold">
-            {crew.length} Onboard
-          </span>
-        </div>
-
-        <div className="flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
-          {crew.length > 0 ? (
-            crew.map((ast, idx) => (
-              <div 
-                key={idx} 
-                className="flex items-center justify-between p-2.5 bg-slate-900/60 border border-slate-800/80 rounded-xl hover:border-slate-700 transition-all text-xs"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-slate-950 border border-cyan-500/30 flex items-center justify-center text-sm">
-                    {getCrewFlag(ast)}
-                  </div>
-                  <div>
-                    <div className="font-medium text-slate-100 flex items-center gap-1.5">
-                      <span>{ast.name}</span>
-                    </div>
-                    <div className="text-[10px] text-slate-400">Astronaut</div>
-                  </div>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-cyan-300 rounded font-semibold border border-slate-700">
-                  {ast.craft || 'ISS'}
-                </span>
-              </div>
-            ))
-          ) : (
-            <div className="text-xs text-slate-400 p-3 text-center">Loading astronaut roster...</div>
-          )}
-        </div>
-      </div>
-
-      {/* BOTTOM CONTROL FOOTER */}
-      <footer className="absolute bottom-4 left-4 right-4 z-10 flex items-center justify-between p-3 glass-panel rounded-xl font-mono text-xs">
-        <div className="flex items-center gap-4 text-slate-400">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            ORBITAL SURVEILLANCE ACTIVE
-          </span>
-          <span className="hidden sm:inline">|</span>
-          <span className="hidden sm:inline text-slate-400">
-            SYNC: {lastSync.toLocaleTimeString()}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setAutoRotate(!autoRotate)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-mono border transition-all ${
-              autoRotate 
-                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm' 
-                : 'bg-slate-800 text-slate-400 border-slate-700'
-            }`}
-          >
-            AUTO ROTATE: {autoRotate ? 'ON' : 'OFF'}
-          </button>
-        </div>
+      <footer className="zg-footer">
+        <span className="flex items-center gap-2">
+          <span className="zg-live-dot" aria-hidden="true" />
+          <span className="hidden sm:inline zg-footer__status">Orbital feed active</span>
+          <span className="sm:hidden zg-footer__status">Live</span>
+          <span className="hidden md:inline zg-footer__sync">· sync {lastSync.toLocaleTimeString()}</span>
+        </span>
+        <button
+          type="button"
+          className={`zg-btn zg-btn--compact${autoRotate ? ' zg-btn--active' : ''}`}
+          onClick={() => setAutoRotate(v => !v)}
+        >
+          <span className="zg-footer__rotate-label">Auto-rotate </span>
+          {autoRotate ? 'on' : 'off'}
+        </button>
       </footer>
+
+      <div className="zg-mobile-tabs" role="tablist" aria-label="Panels">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileView === 'globe'}
+          className={`zg-btn${mobileView === 'globe' ? ' zg-btn--active' : ''}`}
+          onClick={() => setMobileView('globe')}
+        >
+          Globe
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileView === 'track'}
+          className={`zg-btn${mobileView === 'track' ? ' zg-btn--active' : ''}`}
+          onClick={() => setMobileView('track')}
+        >
+          Track
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileView === 'crew'}
+          className={`zg-btn${mobileView === 'crew' ? ' zg-btn--active' : ''}`}
+          onClick={() => setMobileView('crew')}
+        >
+          Crew
+        </button>
+      </div>
     </div>
   );
 }

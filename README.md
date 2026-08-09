@@ -1,171 +1,139 @@
-# 🛰️ ZeroGravity — 3D Live Orbital Satellite Surveillance Platform
+# ZeroGravity
 
-**ZeroGravity** is a real-time, 3D interactive satellite tracking and orbital surveillance platform built with a 4-service microservices architecture deployed on **Zerops**.
+Live satellite tracker with an interactive 3D globe. NORAD TLE data and ISS crew info are polled in the background, cached in Valkey, and served to a React frontend.
 
-![ZeroGravity Architecture](https://img.shields.io/badge/Platform-Zerops-blueviolet?style=for-the-badge)
-![Node.js](https://img.shields.io/badge/Node.js-v22-green?style=for-the-badge&logo=node.js)
-![React](https://img.shields.io/badge/React-v18-blue?style=for-the-badge&logo=react)
-![Three.js](https://img.shields.io/badge/Three.js-3D-black?style=for-the-badge&logo=three.js)
-![Valkey](https://img.shields.io/badge/Valkey-KeyDB-red?style=for-the-badge&logo=redis)
+Built for the **[WeMakeDevs × Zerops Hackathon](https://wemakedevs.org/)**.
 
----
+**Demo:** https://frontend-14c-3000.sea1.zerops.app
 
-## 🌐 Live Service Endpoints
+## What it does
 
-- **3D Globe Web Platform:** [https://frontend-14c-3000.sea1.zerops.app](https://frontend-14c-3000.sea1.zerops.app)
-- **API Satellite Telemetry:** [https://api-14c-3000.sea1.zerops.app/api/satellites](https://api-14c-3000.sea1.zerops.app/api/satellites)
-- **API ISS Crew Roster:** [https://api-14c-3000.sea1.zerops.app/api/crew](https://api-14c-3000.sea1.zerops.app/api/crew)
+- Renders Earth with satellite positions, orbital paths, and station markers
+- Lets you search and filter objects (all / stations / visual)
+- Shows telemetry for the selected satellite (lat, lng, altitude, velocity when available)
+- Lists astronauts currently in orbit (ISS + Tiangong when data is present)
 
----
+Data sources: [CelesTrak](https://celestrak.org/) (NORAD groups) and [Open Notify](http://open-notify.org/) (astronaut roster).
 
-## 🏛️ Microservices Architecture
+## Architecture
 
-The system comprises four decoupled, single-responsibility services running on Zerops private network:
+Four services on Zerops:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    External Telemetry APIs                   │
-│   • CelesTrak NORAD (gp.php?GROUP=stations & visual)        │
-│   • Open-Notify Astros (astros.json)                        │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ (Polling every 30s)
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       ingestor service                      │
-│                  (Node.js Background Worker)                │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ (Stores JSON with 60s TTL)
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        cache service                        │
-│                (Zerops Managed Valkey / KeyDB)              │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ (Private Network ENV)
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                          api service                        │
-│                    (Node.js Express Server)                 │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ (Internal DNS http://api:3000)
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       frontend service                      │
-│            (Vite + React + Tailwind + Three.js)             │
-└─────────────────────────────────────────────────────────────┘
+CelesTrak / Open Notify
+        │
+        ▼
+   ingestor  ──writes──▶  cache (Valkey)
+                              │
+                              ▼
+                            api  ◀── /api/satellites, /api/crew
+                              │
+                              ▼
+                          frontend  (Vite + React + react-globe.gl)
 ```
 
----
+| Service   | Role |
+|-----------|------|
+| `cache`   | Managed Valkey 7.2. Keys expire after 60s. |
+| `ingestor`| Polls external APIs every 30s, normalizes JSON, writes to cache. |
+| `api`     | Express. Reads cache, runs orbital propagation, exposes REST endpoints. |
+| `frontend`| Serves the built SPA and proxies `/api/*` to the api service. |
 
-## ⚙️ Service Specifications
+## Repository layout
 
-### 1. `cache` (Managed Valkey Service)
-- **Type:** `valkey:single@7.2` (Profile: `hobby`)
-- Stores normalized satellite telemetry key `satellites:live` and astronaut roster key `iss:crew`.
-- Auto-expiring TTL (60 seconds) ensuring cache freshness and resilience.
-
-### 2. `ingestor` (Node.js Background Worker)
-- **Type:** `ubuntu/nodejs@22`
-- Runs continuous 30-second polling tasks against NORAD CelesTrak and Open-Notify APIs.
-- Deduplicates and structures satellite orbital data before writing to `cache`.
-
-### 3. `api` (Node.js Express Server)
-- **Type:** `ubuntu/nodejs@22`
-- **Port:** `3000` (CORS-enabled)
-- Reads cached data from `cache` via Zerops private environment variables (`REDIS_URL`).
-- Performs real-time **Keplerian orbital propagation math** to calculate current satellite latitude, longitude, altitude (km), and orbital velocity (km/s).
-
-### 4. `frontend` (Vite + React + Tailwind + Three.js)
-- **Type:** `ubuntu/nodejs@22`
-- **Port:** `3000`
-- Features a dark space theme (`#05070f`) with glassmorphism HUD design.
-- Renders an interactive 3D Earth globe (`react-globe.gl` + Three.js) with:
-  - 3D satellite node points & pulsing space station markers.
-  - Orbital trajectory paths & inclination rings.
-  - Selected satellite telemetry inspector (Lat/Lng, Altitude, Speed, Period).
-  - Live ISS astronaut crew roster card.
-  - Instant satellite search and category filters (`ALL`, `STATIONS`, `VISUAL`).
-  - Native proxy routing `/api/*` to internal DNS `http://api:3000`.
-
----
-
-## 📄 Infrastructure Configuration (`zerops.yaml`)
-
-```yaml
-zerops:
-  - setup: ingestor
-    build:
-      base: nodejs@22
-      buildCommands:
-        - npm install
-      deployFiles:
-        - .
-    run:
-      base: nodejs@22
-      envVariables:
-        REDIS_URL: ${cache_connectionString}
-        REDIS_HOST: ${cache_hostname}
-        REDIS_PORT: ${cache_port}
-        REDIS_PASSWORD: ${cache_password}
-      start: node index.js
-
-  - setup: api
-    build:
-      base: nodejs@22
-      buildCommands:
-        - npm install
-      deployFiles:
-        - .
-    run:
-      base: nodejs@22
-      ports:
-        - port: 3000
-          httpSupport: true
-      envVariables:
-        REDIS_URL: ${cache_connectionString}
-        REDIS_HOST: ${cache_hostname}
-        REDIS_PORT: ${cache_port}
-        REDIS_PASSWORD: ${cache_password}
-      start: node index.js
-
-  - setup: frontend
-    build:
-      base: nodejs@22
-      buildCommands:
-        - npm install
-        - npm run build
-      deployFiles:
-        - .
-    run:
-      base: nodejs@22
-      ports:
-        - port: 3000
-          httpSupport: true
-      envVariables:
-        API_HOST: http://api:3000
-      start: node server.js
+```
+.
+├── ingestor/          # background worker
+├── api/               # REST API
+├── frontend/          # React app + production static server
+├── zerops.yaml        # per-service Zerops config (root + service dirs)
+└── design.md          # frontend design system
 ```
 
----
+## Running locally
 
-## 🚀 Deployment
+You need Node.js 22 and a Redis-compatible server for the cache layer.
 
-The project is configured for automated build and sequential deployment on Zerops.
+**1. Cache**
 
-To deploy any service manually via Zerops CLI (`zcli`):
+Run Valkey or Redis locally (default port 6379).
+
+**2. API**
 
 ```bash
-# Deploy ingestor worker
+cd api
+npm install
+REDIS_HOST=127.0.0.1 npm start
+```
+
+**3. Ingestor** (optional — populates cache)
+
+```bash
+cd ingestor
+npm install
+REDIS_HOST=127.0.0.1 node index.js
+```
+
+**4. Frontend**
+
+The Vite dev config proxies `/api` to `http://api:3000` (Zerops internal DNS). For local work, point it at your machine:
+
+```bash
+cd frontend
+npm install
+# edit vite.config.js proxy target to http://127.0.0.1:3000, or set API_HOST when using server.js
+npm run dev
+```
+
+Open http://localhost:3000
+
+**Production build**
+
+```bash
+cd frontend
+npm run build
+API_HOST=http://127.0.0.1:3000 npm start
+```
+
+## API
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/satellites` | Satellite list with propagated positions |
+| `GET /api/crew` | Current astronaut roster |
+
+Example (deployed):
+
+- https://api-14c-3000.sea1.zerops.app/api/satellites
+- https://api-14c-3000.sea1.zerops.app/api/crew
+
+## Deploying on Zerops
+
+Each service has its own `zerops.yaml`. Push with the Zerops CLI:
+
+```bash
 zcli push ingestor
-
-# Deploy API server
 zcli push api
-
-# Deploy frontend application
 zcli push frontend
 ```
 
----
+The root `zerops.yaml` mirrors the service definitions. Cache is provisioned as a managed Valkey service; connection strings are injected as `${cache_*}` env vars.
 
-## 📜 License
+## Design
 
-MIT License. Designed for live orbital telemetry visualization.
+The UI uses Hallmark **Midnight** — cool dark canvas, warm amber accents, Syne + Figtree. See [`design.md`](design.md). Tokens: `frontend/tokens.css`.
+
+Fonts: **Syne** (display), **Figtree** (everything else).
+
+## Built with
+
+- [Zerops](https://zerops.io/) — hosting and managed Valkey
+- [React](https://react.dev/) + [Vite](https://vitejs.dev/)
+- [react-globe.gl](https://github.com/vasturiano/react-globe.gl) / Three.js
+- [Cursor](https://cursor.com/) — AI-assisted editing and iteration
+- [Antigravity](https://antigravity.google/) — used during development
+- [Hallmark](https://github.com/nutlope/hallmark) — design system and UI audit
+
+## License
+
+MIT

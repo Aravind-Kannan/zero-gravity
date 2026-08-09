@@ -7,26 +7,18 @@ export default {
   theme: {
     extend: {
       colors: {
-        space: {
-          950: '#05070f',
-          900: '#0a0f1d',
-          800: '#111827',
-          700: '#1f293d',
-        },
-        cyan: {
-          400: '#22d3ee',
-          500: '#06b6d4',
-          900: '#164e63',
-        },
-        emerald: {
-          400: '#34d399',
-          500: '#10b981',
-        }
+        paper: 'var(--color-paper)',
+        'paper-2': 'var(--color-paper-2)',
+        'paper-3': 'var(--color-paper-3)',
+        ink: 'var(--color-ink)',
+        'ink-2': 'var(--color-ink-2)',
+        accent: 'var(--color-accent)',
+        rule: 'var(--color-rule)',
       },
       fontFamily: {
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-      }
+        display: ['var(--font-display)'],
+        body: ['var(--font-body)'],
+      },
     },
   },
   plugins: [],
