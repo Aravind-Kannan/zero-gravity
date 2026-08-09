@@ -1,0 +1,17 @@
+zerops:
+  - setup: frontend
+    build:
+      base: nodejs@22
+      buildCommands:
+        - npm install
+        - npm run build
+      deployFiles:
+        - .
+    run:
+      base: nodejs@22
+      ports:
+        - port: 3000
+          httpSupport: true
+      envVariables:
+        API_HOST: http://api:3000
+      start: node server.js

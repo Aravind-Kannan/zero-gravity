@@ -1,0 +1,52 @@
+zerops:
+  - setup: ingestor
+    build:
+      base: nodejs@22
+      buildCommands:
+        - npm install
+      deployFiles:
+        - .
+    run:
+      base: nodejs@22
+      envVariables:
+        REDIS_URL: ${cache_connectionString}
+        REDIS_HOST: ${cache_hostname}
+        REDIS_PORT: ${cache_port}
+        REDIS_PASSWORD: ${cache_password}
+      start: node index.js
+
+  - setup: api
+    build:
+      base: nodejs@22
+      buildCommands:
+        - npm install
+      deployFiles:
+        - .
+    run:
+      base: nodejs@22
+      ports:
+        - port: 3000
+          httpSupport: true
+      envVariables:
+        REDIS_URL: ${cache_connectionString}
+        REDIS_HOST: ${cache_hostname}
+        REDIS_PORT: ${cache_port}
+        REDIS_PASSWORD: ${cache_password}
+      start: node index.js
+
+  - setup: frontend
+    build:
+      base: nodejs@22
+      buildCommands:
+        - npm install
+        - npm run build
+      deployFiles:
+        - .
+    run:
+      base: nodejs@22
+      ports:
+        - port: 3000
+          httpSupport: true
+      envVariables:
+        API_HOST: http://api:3000
+      start: node server.js

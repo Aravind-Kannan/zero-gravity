@@ -1,0 +1,109 @@
+{
+  "version": "1",
+  "pid": 5559,
+  "startTime": "310332791",
+  "projectId": "SAI6uAUXRmGvIeb5MxxBIA",
+  "environment": "container",
+  "intent": "Develop and deploy ZeroGravity 3D live orbital satellite surveillance platform",
+  "services": [
+    "api",
+    "frontend",
+    "ingestor"
+  ],
+  "createdAt": "2026-08-09T13:43:29Z",
+  "lastActivityAt": "2026-08-09T14:16:39Z",
+  "deploys": {
+    "api": [
+      {
+        "attemptedAt": "2026-08-09T13:49:45Z",
+        "succeededAt": "2026-08-09T13:51:09Z",
+        "setup": "api",
+        "strategy": "zcli"
+      },
+      {
+        "attemptedAt": "2026-08-09T13:55:20Z",
+        "succeededAt": "2026-08-09T13:56:32Z",
+        "setup": "api",
+        "strategy": "zcli"
+      },
+      {
+        "attemptedAt": "2026-08-09T13:57:27Z",
+        "succeededAt": "2026-08-09T13:58:38Z",
+        "setup": "api",
+        "strategy": "zcli"
+      }
+    ],
+    "frontend": [
+      {
+        "attemptedAt": "2026-08-09T13:52:36Z",
+        "succeededAt": "2026-08-09T13:54:51Z",
+        "setup": "frontend",
+        "strategy": "zcli"
+      },
+      {
+        "attemptedAt": "2026-08-09T14:00:08Z",
+        "succeededAt": "2026-08-09T14:02:26Z",
+        "setup": "frontend",
+        "strategy": "zcli"
+      },
+      {
+        "attemptedAt": "2026-08-09T14:14:20Z",
+        "succeededAt": "2026-08-09T14:16:37Z",
+        "setup": "frontend",
+        "strategy": "zcli"
+      }
+    ],
+    "ingestor": [
+      {
+        "attemptedAt": "2026-08-09T13:48:09Z",
+        "succeededAt": "2026-08-09T13:49:18Z",
+        "setup": "ingestor",
+        "strategy": "zcli"
+      }
+    ]
+  },
+  "verifies": {
+    "api": [
+      {
+        "attemptedAt": "2026-08-09T13:55:09Z",
+        "passedAt": "2026-08-09T13:55:09Z",
+        "summary": "reachable (root path not 2xx — accepted as cosmetic)",
+        "passed": true
+      },
+      {
+        "attemptedAt": "2026-08-09T13:56:40Z",
+        "passedAt": "2026-08-09T13:56:40Z",
+        "summary": "healthy",
+        "passed": true
+      },
+      {
+        "attemptedAt": "2026-08-09T14:04:26Z",
+        "passedAt": "2026-08-09T14:04:26Z",
+        "summary": "healthy",
+        "passed": true
+      }
+    ],
+    "frontend": [
+      {
+        "attemptedAt": "2026-08-09T13:56:48Z",
+        "passedAt": "2026-08-09T13:56:48Z",
+        "summary": "healthy",
+        "passed": true
+      },
+      {
+        "attemptedAt": "2026-08-09T14:03:06Z",
+        "passedAt": "2026-08-09T14:03:06Z",
+        "summary": "healthy",
+        "passed": true
+      }
+    ],
+    "ingestor": [
+      {
+        "attemptedAt": "2026-08-09T13:54:59Z",
+        "passedAt": "2026-08-09T13:54:59Z",
+        "summary": "healthy",
+        "passed": true
+      }
+    ]
+  }
+}

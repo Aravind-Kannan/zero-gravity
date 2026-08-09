@@ -1,0 +1,8 @@
+{
+  "ingestor": {
+    "setupName": "ingestor",
+    "targetHostname": "ingestor",
+    "verifiedAt": "2026-08-09T13:54:59Z",
+    "summary": "healthy"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "sessions": [
+    {
+      "sessionId": "work-5559",
+      "pid": 5559,
+      "startTime": "310332791",
+      "workflow": "work",
+      "projectId": "SAI6uAUXRmGvIeb5MxxBIA",
+      "intent": "Develop and deploy ZeroGravity 3D live orbital satellite surveillance platform",
+      "createdAt": "2026-08-09T13:43:29Z",
+      "updatedAt": "2026-08-09T13:43:29Z"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+zerops:
+  - setup: api
+    build:
+      base: nodejs@22
+      buildCommands:
+        - npm install
+      deployFiles:
+        - .
+    run:
+      base: nodejs@22
+      ports:
+        - port: 3000
+          httpSupport: true
+      envVariables:
+        REDIS_URL: ${cache_connectionString}
+        REDIS_HOST: ${cache_hostname}
+        REDIS_PORT: ${cache_port}
+        REDIS_PASSWORD: ${cache_password}
+      start: node index.js
