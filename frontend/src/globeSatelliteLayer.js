@@ -50,11 +50,10 @@ export function mergeSatelliteListInPlace(target, next) {
   return target;
 }
 
-export function filterSatellites(list, filter, search) {
+export function filterSatellites(list, visibleTypes, search) {
   return list.filter(s => {
-    const matchesFilter = filter === 'all'
-      || (filter === 'station' && s.group === 'station')
-      || (filter === 'visual' && s.group !== 'station');
+    const group = s.group || 'visual';
+    const matchesFilter = visibleTypes[group] === true;
     const matchesSearch = !search
       || s.name.toLowerCase().includes(search.toLowerCase())
       || String(s.catId).includes(search);
@@ -62,8 +61,8 @@ export function filterSatellites(list, filter, search) {
   });
 }
 
-export function catalogKey(list, filter, search) {
-  return filterSatellites(list, filter, search).map(s => s.id).join(',');
+export function catalogKey(list, visibleTypes, search) {
+  return filterSatellites(list, visibleTypes, search).map(s => s.id).join(',');
 }
 
 const meshRegistry = new Map();

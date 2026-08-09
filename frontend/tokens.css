@@ -1,154 +1,167 @@
-/* Hallmark · genre: atmospheric · theme: Midnight · design-system: design.md
- * paper-band: dark · display-style: grotesk-sans · accent-hue: warm
- * macrostructure: Workbench · designed-as-app
+/* Hallmark · genre: atmospheric · theme: Terminal · design-system: design.md
+ * paper-band: dark · display-style: mono · accent-hue: phosphor ~127° (P1 yellow-green)
+ * macrostructure: Workbench · mood: terminal · designed-as-app
  */
 
 :root {
-  --color-paper:      oklch(13% 0.022 250);
-  --color-paper-2:    oklch(17% 0.026 250);
-  --color-paper-3:    oklch(21% 0.028 250);
-  --color-ink:        oklch(93% 0.008 250);
-  --color-ink-2:      oklch(72% 0.012 250);
-  --color-ink-muted:  oklch(55% 0.014 250);
-  --color-rule:       oklch(28% 0.02 250);
-  --color-accent:     oklch(74% 0.18 48);
-  --color-accent-ink: oklch(16% 0.03 48);
-  --color-accent-dim: oklch(60% 0.11 48);
-  --color-accent-hot: oklch(67% 0.2 28);
-  --color-accent-glow: oklch(74% 0.18 48 / 0.35);
-  --color-focus:      oklch(78% 0.14 48);
-  --color-live:       oklch(68% 0.14 145);
-  --color-live-ink:   oklch(18% 0.04 145);
-  --color-error:      oklch(62% 0.18 25);
+  /* Phosphor hue anchor — tune here; all phosphor-family tokens follow */
+  --hue-phosphor:      127;
+  --hue-phosphor-hot:  108;
+  --chroma-phosphor:   0.24;
+  --chroma-phosphor-dim: 0.14;
+
+  --color-paper:      oklch(10% 0.018 var(--hue-phosphor));
+  --color-paper-2:    oklch(13% 0.022 var(--hue-phosphor));
+  --color-paper-3:    oklch(16% 0.025 var(--hue-phosphor));
+  --color-ink:        oklch(88% 0.045 var(--hue-phosphor));
+  --color-ink-2:      oklch(68% 0.065 var(--hue-phosphor));
+  --color-ink-muted:  oklch(48% 0.055 var(--hue-phosphor));
+  --color-rule:       oklch(24% 0.032 var(--hue-phosphor));
+  --color-rule-strong: oklch(30% 0.038 var(--hue-phosphor));
+  --color-accent:     oklch(79% var(--chroma-phosphor) var(--hue-phosphor));
+  --color-accent-ink: oklch(12% 0.04 var(--hue-phosphor));
+  --color-accent-dim: oklch(58% var(--chroma-phosphor-dim) var(--hue-phosphor));
+  --color-accent-hot: oklch(83% 0.21 var(--hue-phosphor-hot));
+  --color-accent-glow: oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.38);
+  --color-focus:      oklch(81% 0.19 var(--hue-phosphor));
+  --color-live:       oklch(79% var(--chroma-phosphor) var(--hue-phosphor));
+  --color-live-ink:   oklch(12% 0.04 var(--hue-phosphor));
+  --color-error:      oklch(62% 0.2 25);
 
   /* Accent alpha scale */
-  --color-accent-a12: oklch(74% 0.18 48 / 0.12);
-  --color-accent-a14: oklch(74% 0.18 48 / 0.14);
-  --color-accent-a15: oklch(74% 0.18 48 / 0.15);
-  --color-accent-a25: oklch(72% 0.17 48 / 0.25);
-  --color-accent-a28: oklch(74% 0.18 48 / 0.28);
-  --color-accent-a30: oklch(74% 0.18 48 / 0.3);
-  --color-accent-a35: oklch(72% 0.17 48 / 0.35);
-  --color-accent-a40: oklch(74% 0.18 48 / 0.4);
-  --color-accent-a42: oklch(74% 0.18 48 / 0.42);
-  --color-accent-a45: oklch(72% 0.17 48 / 0.45);
-  --color-accent-a55: oklch(74% 0.18 48 / 0.55);
+  --color-accent-a12: oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.12);
+  --color-accent-a14: oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.14);
+  --color-accent-a15: oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.15);
+  --color-accent-a25: oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.25);
+  --color-accent-a28: oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.28);
+  --color-accent-a30: oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.3);
+  --color-accent-a35: oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.35);
+  --color-accent-a40: oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.4);
+  --color-accent-a42: oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.42);
+  --color-accent-a45: oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.45);
+  --color-accent-a55: oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.55);
 
   /* Hot accent alpha */
-  --color-hot-a10: oklch(65% 0.19 28 / 0.1);
-  --color-hot-a12: oklch(65% 0.19 28 / 0.12);
-  --color-hot-a28: oklch(65% 0.19 28 / 0.28);
-  --color-hot-a35: oklch(65% 0.19 28 / 0.35);
-  --color-hot-a45: oklch(65% 0.19 28 / 0.45);
-  --color-hot-a55: oklch(65% 0.19 28 / 0.55);
+  --color-hot-a10: oklch(83% 0.21 var(--hue-phosphor-hot) / 0.1);
+  --color-hot-a12: oklch(83% 0.21 var(--hue-phosphor-hot) / 0.12);
+  --color-hot-a28: oklch(83% 0.21 var(--hue-phosphor-hot) / 0.28);
+  --color-hot-a35: oklch(83% 0.21 var(--hue-phosphor-hot) / 0.35);
+  --color-hot-a45: oklch(83% 0.21 var(--hue-phosphor-hot) / 0.45);
+  --color-hot-a55: oklch(83% 0.21 var(--hue-phosphor-hot) / 0.55);
 
   /* Satellite type colors */
-  --color-type-station:  oklch(72% 0.17 48);
-  --color-type-visual:   oklch(68% 0.12 230);
-  --color-type-science:  oklch(62% 0.14 290);
-  --color-type-weather:  oklch(68% 0.12 155);
+  --color-type-station:  oklch(79% var(--chroma-phosphor) var(--hue-phosphor));
+  --color-type-visual:   oklch(72% 0.14 200);
+  --color-type-science:  oklch(65% 0.16 310);
+  --color-type-weather:  oklch(74% 0.14 85);
 
-  --color-type-station-ring:  oklch(72% 0.17 48 / 0.6);
-  --color-type-visual-ring:   oklch(68% 0.12 230 / 0.53);
-  --color-type-science-ring:  oklch(62% 0.14 290 / 0.53);
-  --color-type-weather-ring:  oklch(68% 0.12 155 / 0.53);
+  --color-type-station-ring:  oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.6);
+  --color-type-visual-ring:   oklch(72% 0.14 200 / 0.53);
+  --color-type-science-ring:  oklch(65% 0.16 310 / 0.53);
+  --color-type-weather-ring:  oklch(74% 0.14 85 / 0.53);
 
-  --color-type-visual-a12:  oklch(68% 0.12 230 / 0.12);
-  --color-type-visual-a14:  oklch(68% 0.12 230 / 0.14);
-  --color-type-visual-a35:  oklch(68% 0.12 230 / 0.35);
-  --color-type-science-a12: oklch(62% 0.14 290 / 0.12);
-  --color-type-science-a14: oklch(62% 0.14 290 / 0.14);
-  --color-type-science-a35: oklch(62% 0.14 290 / 0.35);
-  --color-type-weather-a12: oklch(68% 0.12 155 / 0.12);
-  --color-type-weather-a14: oklch(68% 0.12 155 / 0.14);
-  --color-type-weather-a35: oklch(68% 0.12 155 / 0.35);
+  --color-type-visual-a12:  oklch(72% 0.14 200 / 0.12);
+  --color-type-visual-a14:  oklch(72% 0.14 200 / 0.14);
+  --color-type-visual-a35:  oklch(72% 0.14 200 / 0.35);
+  --color-type-science-a12: oklch(65% 0.16 310 / 0.12);
+  --color-type-science-a14: oklch(65% 0.16 310 / 0.14);
+  --color-type-science-a35: oklch(65% 0.16 310 / 0.35);
+  --color-type-weather-a12:  oklch(74% 0.14 85 / 0.12);
+  --color-type-weather-a14:  oklch(74% 0.14 85 / 0.14);
+  --color-type-weather-a35:  oklch(74% 0.14 85 / 0.35);
 
   /* Orbit band label colors */
-  --color-band-leo: oklch(74% 0.18 48);
-  --color-band-meo: oklch(62% 0.04 48);
-  --color-band-geo: oklch(82% 0.04 250);
+  --color-band-leo: oklch(79% var(--chroma-phosphor) var(--hue-phosphor));
+  --color-band-meo: oklch(58% 0.055 var(--hue-phosphor));
+  --color-band-geo: oklch(78% 0.045 var(--hue-phosphor));
 
-  --color-band-leo-a30:  oklch(74% 0.18 48 / 0.3);
-  --color-band-meo-a35:  oklch(55% 0.04 48 / 0.35);
-  --color-band-geo-a35:  oklch(75% 0.04 250 / 0.35);
+  --color-band-leo-a30:  oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.3);
+  --color-band-meo-a35:  oklch(48% 0.055 var(--hue-phosphor) / 0.35);
+  --color-band-geo-a35:  oklch(68% 0.045 var(--hue-phosphor) / 0.35);
 
   /* Globe data layer */
-  --color-globe-atmo:    oklch(62% 0.12 48);
-  --color-globe-station: oklch(72% 0.17 48);
-  --color-globe-sat:     oklch(52% 0.06 48);
-  --color-globe-select:  oklch(93% 0.008 250);
-  --color-globe-hover:   oklch(98% 0.006 48);
-  --color-path-station:  oklch(74% 0.18 48 / 0.33);
-  --color-path-satellite: oklch(74% 0.18 48 / 0.6);
+  --color-globe-atmo:    oklch(56% var(--chroma-phosphor-dim) var(--hue-phosphor));
+  --color-globe-station: oklch(79% var(--chroma-phosphor) var(--hue-phosphor));
+  --color-globe-sat:     oklch(48% 0.085 var(--hue-phosphor));
+  --color-globe-select:  oklch(91% 0.055 var(--hue-phosphor));
+  --color-globe-hover:   oklch(93% 0.065 var(--hue-phosphor));
+  --color-path-station:  oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.33);
+  --color-path-satellite: oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.55);
 
   /* Surface overlays */
-  --color-paper-a0:   oklch(13% 0.022 250 / 0);
-  --color-paper-a85:  oklch(17% 0.026 250 / 0.85);
-  --color-paper-a88:  oklch(17% 0.026 250 / 0.88);
-  --color-paper-a92:  oklch(13% 0.022 250 / 0.92);
-  --color-paper-a94:  oklch(13% 0.022 250 / 0.94);
-  --color-paper-a96:  oklch(17% 0.026 250 / 0.96);
-  --color-label-bg:   oklch(15% 0.024 250 / 0.97);
-  --color-panel-top:  oklch(19% 0.028 250);
-  --color-inspect-top: oklch(22% 0.03 250);
-  --color-ink-faint-a05: oklch(93% 0.008 250 / 0.05);
-  --color-ink-faint-a02: oklch(93% 0.008 250 / 0.02);
-  --color-ink-faint-a025: oklch(93% 0.008 250 / 0.025);
-  --color-rule-a80:   oklch(28% 0.02 250 / 0.8);
+  --color-paper-a0:   oklch(10% 0.018 var(--hue-phosphor) / 0);
+  --color-paper-a85:  oklch(13% 0.022 var(--hue-phosphor) / 0.85);
+  --color-paper-a88:  oklch(13% 0.022 var(--hue-phosphor) / 0.88);
+  --color-paper-a92:  oklch(10% 0.018 var(--hue-phosphor) / 0.92);
+  --color-paper-a94:  oklch(10% 0.018 var(--hue-phosphor) / 0.94);
+  --color-paper-a96:  oklch(13% 0.022 var(--hue-phosphor) / 0.96);
+  --color-label-bg:   oklch(11% 0.02 var(--hue-phosphor) / 0.97);
+  --color-panel-top:  oklch(14% 0.024 var(--hue-phosphor));
+  --color-inspect-top: oklch(15% 0.026 var(--hue-phosphor));
+  --color-ink-faint-a05: oklch(88% 0.045 var(--hue-phosphor) / 0.05);
+  --color-ink-faint-a02: oklch(88% 0.045 var(--hue-phosphor) / 0.02);
+  --color-ink-faint-a025: oklch(88% 0.045 var(--hue-phosphor) / 0.025);
+  --color-rule-a80:   oklch(24% 0.032 var(--hue-phosphor) / 0.8);
 
-  /* Atmospheric blooms */
-  --color-bloom-warm: oklch(64% 0.16 48 / 0.22);
-  --color-bloom-hot:  oklch(58% 0.14 28 / 0.16);
-  --color-vignette-edge: oklch(8% 0.02 250 / 0.55);
-  --color-vignette-top:  oklch(13% 0.022 250 / 0.35);
-  --color-vignette-bottom: oklch(13% 0.022 250 / 0.45);
+  /* Terminal — no atmospheric blooms */
+  --color-bloom-warm: transparent;
+  --color-bloom-hot:  transparent;
+  --color-vignette-edge: oklch(6% 0.02 var(--hue-phosphor) / 0.65);
+  --color-vignette-top:  oklch(10% 0.018 var(--hue-phosphor) / 0.5);
+  --color-vignette-bottom: oklch(10% 0.018 var(--hue-phosphor) / 0.55);
 
   /* Suspension tether gradient stops */
-  --color-tether-a05: oklch(65% 0.19 28 / 0.05);
-  --color-tether-a35: oklch(65% 0.19 28 / 0.35);
+  --color-tether-a05: oklch(83% 0.21 var(--hue-phosphor-hot) / 0.05);
+  --color-tether-a35: oklch(83% 0.21 var(--hue-phosphor-hot) / 0.35);
 
-  --font-display: "Syne", system-ui, sans-serif;
-  --font-body:    "Figtree", system-ui, sans-serif;
+  --font-display: "JetBrains Mono", ui-monospace, monospace;
+  --font-body:    "JetBrains Mono", ui-monospace, monospace;
+  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
 
-  --space-3xs: 0.25rem;
-  --space-2xs: 0.5rem;
-  --space-xs:  0.75rem;
-  --space-sm:  1rem;
-  --space-md:  1.5rem;
-  --space-lg:  2rem;
-  --space-xl:  3rem;
+  --space-3xs: 0.3125rem;
+  --space-2xs: 0.5625rem;
+  --space-xs:  0.875rem;
+  --space-sm:  1.125rem;
+  --space-md:  1.625rem;
+  --space-lg:  2.25rem;
+  --space-xl:  3.25rem;
 
-  --text-xs:   0.75rem;
+  --text-3xs:  0.625rem;
+  --text-2xs:  0.6875rem;
+  --text-xs:   0.8125rem;
   --text-sm:   0.875rem;
-  --text-md:   1rem;
-  --text-lg:   1.25rem;
-  --text-xl:   1.5rem;
-  --text-display: clamp(1.125rem, 1vw + 0.9rem, 1.375rem);
+  --text-md:   0.9375rem;
+  --text-lg:   1.0625rem;
+  --text-xl:   1.25rem;
+  --text-display: clamp(0.875rem, 0.5vw + 0.75rem, 1rem);
 
   --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --dur-short:   180ms;
-  --dur-med:     280ms;
+  --dur-short:   140ms;
+  --dur-med:     220ms;
   --dur-pulse:   2.4s;
   --dur-spin:    900ms;
+  --dur-blink:   1.05s;
 
-  --radius-sm:   0.375rem;
-  --radius-md:   0.625rem;
-  --radius-lg:   0.875rem;
-  --radius-pill: 999px;
+  --radius-sm:   0.125rem;
+  --radius-md:   0.1875rem;
+  --radius-lg:   0.25rem;
+  --radius-pill: 0.125rem;
 
-  --shadow-lift: 0 16px 48px oklch(6% 0.02 250 / 0.62);
-  --shadow-glow: 0 0 0 1px oklch(74% 0.18 48 / 0.28), 0 0 24px oklch(74% 0.18 48 / 0.12);
-  --shadow-panel: inset 0 1px 0 oklch(93% 0.008 250 / 0.06);
-  --shadow-type-dot: 0 0 6px oklch(74% 0.18 48 / 0.2);
-  --shadow-list-active: 0 0 0 1px oklch(74% 0.18 48 / 0.15);
+  --shadow-lift: 0 8px 24px oklch(4% 0.02 var(--hue-phosphor) / 0.55);
+  --shadow-glow: 0 0 0 1px oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.28), 0 0 16px oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.12);
+  --shadow-panel: inset 0 1px 0 oklch(88% 0.045 var(--hue-phosphor) / 0.04);
+  --shadow-type-dot: 0 0 4px oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.28);
+  --shadow-list-active: 0 0 0 1px oklch(79% var(--chroma-phosphor) var(--hue-phosphor) / 0.22);
 
-  --zg-nav-h: 4.25rem;
+  --zg-nav-h: 2.75rem;
   --zg-rail-gap: var(--space-2xs);
-  --zg-rail-right-w: 16rem;
+  --zg-rail-right-w: 19.5rem;
   --zg-rail-inset: clamp(var(--space-sm), 2vw, var(--space-md));
   --zg-zoom-rail-gap: var(--space-lg);
-  --zg-footer-h: 2.5rem;
-  --zg-mobile-tab-h: 2.85rem;
+  --zg-footer-h: 2.25rem;
+  --zg-mobile-tab-h: 2.75rem;
+  --zg-globe-controls-h: 2.5rem;
+  --zg-globe-controls-gap: var(--space-2xs);
   --zg-bottom-chrome: calc(var(--zg-footer-h) + var(--zg-mobile-tab-h) + env(safe-area-inset-bottom, 0px));
 }

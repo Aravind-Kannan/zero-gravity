@@ -1,28 +1,28 @@
 /** WebGL-safe colors for globe.gl — hex / rgba only (no oklch) */
 
 export const TYPE_HEX = {
-  station: '#f0aa55',
-  visual: '#6eb5e8',
-  science: '#a892e8',
-  weather: '#5ecfaa',
+  station: '#9ae600',
+  visual: '#38bdf8',
+  science: '#c084fc',
+  weather: '#facc15',
 };
 
 export const STREAM_RGBA = {
-  station: 'rgba(240, 170, 85, 0.95)',
-  visual: 'rgba(110, 181, 232, 0.88)',
-  science: 'rgba(168, 146, 232, 0.88)',
-  weather: 'rgba(94, 207, 170, 0.88)',
+  station: 'rgba(154, 230, 0, 0.95)',
+  visual: 'rgba(56, 189, 248, 0.88)',
+  science: 'rgba(192, 132, 252, 0.88)',
+  weather: 'rgba(250, 204, 21, 0.88)',
 };
 
 /** @deprecated */
 export const RING_RGBA = STREAM_RGBA;
 
 export const GLOBE_UI = {
-  atmosphere: '#d4954f',
-  selected: '#f5f4fa',
-  hover: '#fffaf2',
-  pathStation: 'rgba(232, 160, 74, 0.45)',
-  pathSatellite: 'rgba(232, 160, 74, 0.55)',
+  atmosphere: '#9ae600',
+  selected: '#ecfccb',
+  hover: '#f7fee7',
+  pathStation: 'rgba(154, 230, 0, 0.45)',
+  pathSatellite: 'rgba(154, 230, 0, 0.55)',
 };
 
 export function typeHex(group) {

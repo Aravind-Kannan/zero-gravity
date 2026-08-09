@@ -1,15 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Globe from 'react-globe.gl';
 import {
-  Satellite,
-  Users,
   Search,
   Compass,
-  RefreshCw,
-  Radio,
-  ShieldCheck,
   ZoomIn,
   ZoomOut,
+  RotateCw,
+  ChevronLeft,
 } from 'lucide-react';
 import {
   createDayNightGlobeMaterial,
@@ -27,6 +24,13 @@ import { mergeSatelliteList, mergeSatelliteListInPlace, filterSatellites, catalo
 import { downlinkReachLength } from './orbitPath.js';
 
 const IS_DEV = import.meta.env.DEV;
+const TYPE_KEYS = ['station', 'visual', 'science', 'weather'];
+const DEFAULT_VISIBLE_TYPES = {
+  station: true,
+  visual: false,
+  science: false,
+  weather: false,
+};
 const PROXIMITY_DEG = 7;
 const ZOOM = { min: 0.35, max: 4.5, step: 0.28, default: 2.5 };
 const DEMO_TICK_MS = 5000;
@@ -89,6 +93,37 @@ function getCrewFlag(person) {
   return '🇺🇸';
 }
 
+function getCrewCraftForSat(sat) {
+  if (!sat || sat.group !== 'station') return null;
+  const name = (sat.name || '').toUpperCase();
+  if (
+    name.includes('TIANHE')
+    || name.includes('TIANGONG')
+    || name.includes('CSS')
+    || name.includes('WENTIAN')
+    || name.includes('MENGTIAN')
+  ) {
+    return 'Tiangong';
+  }
+  if (
+    name.includes('ISS')
+    || name.includes('ZARYA')
+    || name.includes('POISK')
+    || name.includes('NAUKA')
+  ) {
+    return 'ISS';
+  }
+  return null;
+}
+
+function crewMatchesCraft(personCraft, stationCraft) {
+  const person = (personCraft || '').toLowerCase();
+  const station = (stationCraft || '').toLowerCase();
+  if (station === 'iss') return person === 'iss';
+  if (station === 'tiangong') return person.includes('tiangong');
+  return person === station;
+}
+
 export default function App() {
   const globeEl = useRef();
   const [dimensions, setDimensions] = useState({
@@ -99,7 +134,7 @@ export default function App() {
   const [crew, setCrew] = useState([]);
   const [source, setSource] = useState('connecting');
   const [selectedSat, setSelectedSat] = useState(null);
-  const [filter, setFilter] = useState('all');
+  const [visibleTypes, setVisibleTypes] = useState(DEFAULT_VISIBLE_TYPES);
   const [search, setSearch] = useState('');
   const [lastSync, setLastSync] = useState(new Date());
   const [autoRotate, setAutoRotate] = useState(true);
@@ -310,14 +345,23 @@ export default function App() {
     updateGlobeRotation(globeMaterial, lng, lat);
   }, [globeMaterial]);
 
+  const typeCounts = useMemo(() => {
+    const counts = { station: 0, visual: 0, science: 0, weather: 0 };
+    for (const sat of satellitesMaster.current) {
+      const group = sat.group || 'visual';
+      if (group in counts) counts[group] += 1;
+    }
+    return counts;
+  }, [uiTick]);
+
   const layerCatalogKey = useMemo(
-    () => catalogKey(satellitesMaster.current, filter, search),
-    [uiTick, filter, search],
+    () => catalogKey(satellitesMaster.current, visibleTypes, search),
+    [uiTick, visibleTypes, search],
   );
 
   const filteredSatellites = useMemo(
-    () => filterSatellites(satellitesMaster.current, filter, search),
-    [layerCatalogKey, filter, search, uiTick],
+    () => filterSatellites(satellitesMaster.current, visibleTypes, search),
+    [layerCatalogKey, visibleTypes, search, uiTick],
   );
 
   const globeLayerData = useMemo(
@@ -329,6 +373,14 @@ export default function App() {
     if (!selectedSat) return null;
     return satellitesMaster.current.find(s => s.id === selectedSat.id) ?? selectedSat;
   }, [selectedSat, uiTick]);
+
+  const stationCrew = useMemo(() => {
+    if (!selectedDisplay) return { craft: null, members: [] };
+    const craft = getCrewCraftForSat(selectedDisplay);
+    if (!craft) return { craft: null, members: [] };
+    const members = crew.filter((person) => crewMatchesCraft(person.craft, craft));
+    return { craft, members };
+  }, [selectedDisplay, crew]);
 
   useEffect(() => {
     pruneGlobeMeshRegistry(new Set(filteredSatellites.map(s => s.id)));
@@ -379,7 +431,7 @@ export default function App() {
         setHoverSat(null);
         return;
       }
-      setHoverSat(findNearestSatellite(coords.lat, coords.lng, satellitesMaster.current, PROXIMITY_DEG));
+      setHoverSat(findNearestSatellite(coords.lat, coords.lng, filteredSatellites, PROXIMITY_DEG));
     };
 
     const onLeave = () => setHoverSat(null);
@@ -398,8 +450,8 @@ export default function App() {
     setAutoRotate(false);
     const controls = globeEl.current?.controls?.();
     if (controls) controls.autoRotate = false;
-    setMobileView('track');
-  }, []);
+    if (isMobileGlobe) setMobileView('detail');
+  }, [isMobileGlobe]);
 
   const focusSat = useCallback((sat) => {
     selectSat(sat);
@@ -413,22 +465,119 @@ export default function App() {
     }
   }, [selectSat]);
 
-  const handleFilterChange = (id) => {
-    setFilter(id);
-  };
+  const toggleType = useCallback((typeKey) => {
+    setVisibleTypes((prev) => {
+      const next = { ...prev, [typeKey]: !prev[typeKey] };
+      if (!TYPE_KEYS.some((key) => next[key])) return prev;
+      return next;
+    });
+  }, []);
 
-  const stationsCount = satellitesMaster.current.filter(s => s.group === 'station').length;
-  const visualCount = satellitesMaster.current.filter(s => s.group !== 'station').length;
+  const toggleAutoRotate = useCallback(() => {
+    setAutoRotate((prev) => {
+      const next = !prev;
+      configureGlobeControls(next);
+      return next;
+    });
+  }, []);
+
+  const stationsCount = typeCounts.station;
   const trackedCount = satellitesMaster.current.length;
+  const visibleCount = filteredSatellites.length;
 
-  const refreshBtnClass = `zg-btn zg-btn--icon zg-btn--ghost${fetchState === 'loading' ? ' is-loading' : ''}${fetchState === 'error' ? ' is-error' : ''}`;
+  const inspectContent = selectedDisplay ? (
+    <div className="zg-inspect zg-inspect--panel">
+      <div className="zg-row zg-row--start">
+        <span className="zg-flag" aria-hidden="true">{getSatelliteFlag(selectedDisplay)}</span>
+        <span className={`zg-tag zg-tag--${selectedDisplay.group || 'visual'}`}>
+          {getGroupLabel(selectedDisplay)}
+        </span>
+      </div>
+      <div className="zg-row zg-row--between">
+        <div className="zg-min-w-0">
+          <h3 className="zg-inspect__name">{selectedDisplay.name}</h3>
+          <p className="zg-panel__hint zg-inspect__meta">NORAD #{selectedDisplay.catId || selectedDisplay.id}</p>
+        </div>
+        <button
+          type="button"
+          className="zg-btn zg-btn--icon zg-btn--ghost zg-shrink-0"
+          onClick={() => focusSat(selectedDisplay)}
+          aria-label="Lock camera on target"
+        >
+          <Compass className="zg-icon zg-icon-md" />
+        </button>
+      </div>
+      <div className="zg-grid">
+        <div className="zg-stat">
+          <div className="zg-stat__label">Latitude</div>
+          <div className="zg-stat__value">{selectedDisplay.lat?.toFixed(4)}°</div>
+        </div>
+        <div className="zg-stat">
+          <div className="zg-stat__label">Longitude</div>
+          <div className="zg-stat__value">{selectedDisplay.lng?.toFixed(4)}°</div>
+        </div>
+        <div className="zg-stat">
+          <div className="zg-stat__label">Altitude</div>
+          <div className="zg-stat__value">{selectedDisplay.alt ?? '—'} km</div>
+        </div>
+        <div className="zg-stat">
+          <div className="zg-stat__label">Orbit band</div>
+          <div className="zg-stat__value">{altitudeBandLabel(selectedDisplay)}</div>
+        </div>
+        <div className="zg-stat">
+          <div className="zg-stat__label">Velocity</div>
+          <div className="zg-stat__value">
+            {selectedDisplay.velocity != null ? `${selectedDisplay.velocity} km/s` : '—'}
+          </div>
+        </div>
+      </div>
+      {selectedDisplay.inclination != null && (
+        <p className="zg-panel__hint">
+          Inclination {selectedDisplay.inclination}°
+        </p>
+      )}
 
-  const trackPanel = (
+      {stationCrew.craft && (
+        <div className="zg-inspect__crew">
+          <div className="zg-inspect__crew-head">
+            <h4 className="zg-inspect__crew-title">
+              Crew onboard · {stationCrew.craft}
+            </h4>
+            <span className="zg-tag">{stationCrew.members.length}</span>
+          </div>
+          {stationCrew.members.length > 0 ? (
+            <div className="zg-inspect__crew-list" role="list">
+              {stationCrew.members.map((person) => (
+                <div key={person.name} className="zg-crew-row zg-crew-row--compact" role="listitem">
+                  <span className="zg-flag zg-shrink-0" aria-hidden="true">{getCrewFlag(person)}</span>
+                  <span className="zg-crew-row__name zg-truncate">{person.name}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="zg-panel__hint zg-inspect__crew-empty">
+              {crew.length > 0 ? 'No roster for this station' : 'Loading roster…'}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  ) : (
+    <div className="zg-inspect-empty">
+      <Compass className="zg-icon zg-icon-md zg-inspect-empty__icon" aria-hidden="true" />
+      <p className="zg-inspect-empty__title">no target selected</p>
+      <p className="zg-panel__hint zg-inspect-empty__hint">
+        select from catalog or tap globe object
+      </p>
+    </div>
+  );
+
+  const catalogPanel = (
     <>
       <div className="zg-panel__bar">
-        <h2 className="zg-panel__head">Orbital track</h2>
-        {source === 'demo' && <span className="zg-demo-badge">Demo data</span>}
-        {source === 'fallback' && <span className="zg-demo-badge">Cache warming</span>}
+        <h2 className="zg-panel__head">catalog</h2>
+        {source === 'demo' && <span className="zg-term-badge">[DEMO]</span>}
+        {source === 'fallback' && <span className="zg-term-badge">[CACHE]</span>}
       </div>
 
       <div className="zg-panel__controls">
@@ -437,94 +586,38 @@ export default function App() {
           <input
             type="search"
             className="zg-input"
-            placeholder="Name or NORAD ID"
+            placeholder="filter: name | norad_id"
             value={search}
             onChange={e => setSearch(e.target.value)}
             aria-label="Search satellites"
           />
         </div>
 
-        <div className="zg-tabs" role="tablist" aria-label="Satellite filters">
-          {[
-            { id: 'all', short: `All ${trackedCount}`, long: `All ${trackedCount}` },
-            { id: 'station', short: `Sta ${stationsCount}`, long: `Stations ${stationsCount}` },
-            { id: 'visual', short: `Sats ${visualCount}`, long: `Sats ${visualCount}` },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={filter === tab.id}
-              className={`zg-tab${filter === tab.id ? ' is-active' : ''}`}
-              onClick={(e) => {
-                handleFilterChange(tab.id);
-                e.currentTarget.focus({ preventScroll: true });
-              }}
-            >
-              <span className="zg-tab__short">{tab.short}</span>
-              <span className="zg-tab__long">{tab.long}</span>
-            </button>
-          ))}
+        <div className="zg-type-toggles" role="group" aria-label="Satellite type visibility">
+          {TYPE_KEYS.map((typeKey) => {
+            const meta = GROUP_META[typeKey];
+            const count = typeCounts[typeKey];
+            const on = visibleTypes[typeKey];
+            return (
+              <button
+                key={typeKey}
+                type="button"
+                aria-pressed={on}
+                className={`zg-type-toggle zg-type-toggle--${typeKey}${on ? ' is-active' : ''}`}
+                onClick={() => toggleType(typeKey)}
+              >
+                <i className={`zg-type-legend__dot zg-type-legend__dot--${typeKey}`} aria-hidden="true" />
+                <span className="zg-type-toggle__label">{meta.label}</span>
+                <span className="zg-type-toggle__count">{count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {selectedDisplay && (
-        <div className="zg-inspect">
-          <div className="zg-row zg-row--start">
-            <span className="zg-flag" aria-hidden="true">{getSatelliteFlag(selectedDisplay)}</span>
-            <span className={`zg-tag zg-tag--${selectedDisplay.group || 'visual'}`}>
-              {getGroupLabel(selectedDisplay)}
-            </span>
-          </div>
-          <div className="zg-row zg-row--between">
-            <div className="zg-min-w-0">
-              <h3 className="zg-inspect__name">{selectedDisplay.name}</h3>
-              <p className="zg-panel__hint zg-inspect__meta">NORAD #{selectedDisplay.catId || selectedDisplay.id}</p>
-            </div>
-            <button
-              type="button"
-              className="zg-btn zg-btn--icon zg-btn--ghost zg-shrink-0"
-              onClick={() => focusSat(selectedDisplay)}
-              aria-label="Lock camera on target"
-            >
-              <Compass className="zg-icon zg-icon-md" />
-            </button>
-          </div>
-          <div className="zg-grid">
-            <div className="zg-stat">
-              <div className="zg-stat__label">Latitude</div>
-              <div className="zg-stat__value">{selectedDisplay.lat?.toFixed(4)}°</div>
-            </div>
-            <div className="zg-stat">
-              <div className="zg-stat__label">Longitude</div>
-              <div className="zg-stat__value">{selectedDisplay.lng?.toFixed(4)}°</div>
-            </div>
-            <div className="zg-stat">
-              <div className="zg-stat__label">Altitude</div>
-              <div className="zg-stat__value">{selectedDisplay.alt ?? '—'} km</div>
-            </div>
-            <div className="zg-stat">
-              <div className="zg-stat__label">Orbit band</div>
-              <div className="zg-stat__value">{altitudeBandLabel(selectedDisplay)}</div>
-            </div>
-            <div className="zg-stat">
-              <div className="zg-stat__label">Velocity</div>
-              <div className="zg-stat__value">
-                {selectedDisplay.velocity != null ? `${selectedDisplay.velocity} km/s` : '—'}
-              </div>
-            </div>
-          </div>
-          {selectedDisplay.inclination != null && (
-            <p className="zg-panel__hint">
-              Inclination {selectedDisplay.inclination}°
-            </p>
-          )}
-        </div>
-      )}
-
       <div className="zg-panel__list">
         <p className="zg-list__meta">
-          {filteredSatellites.length} objects in view
+          showing {visibleCount}/{trackedCount} objects
         </p>
         <div className="zg-list" role="list">
           {filteredSatellites.slice(0, 50).map(sat => (
@@ -552,33 +645,86 @@ export default function App() {
     </>
   );
 
-  const crewPanel = (
+  const inspectPanel = (
     <>
       <div className="zg-panel__bar">
-        <h2 className="zg-panel__head">Crew roster</h2>
-        <span className="zg-tag">{crew.length} onboard</span>
-      </div>
-      <div className="zg-panel__list">
-        <div className="zg-list">
-          {crew.length > 0 ? (
-            crew.map((ast, idx) => (
-              <div key={idx} className="zg-crew-row">
-                <div className="zg-row zg-row--start zg-min-w-0">
-                  <span className="zg-flag zg-shrink-0" aria-hidden="true">{getCrewFlag(ast)}</span>
-                  <div className="zg-min-w-0">
-                    <div className="zg-crew-row__name zg-truncate">{ast.name}</div>
-                    <div className="zg-panel__hint">{ast.craft || '—'}</div>
-                  </div>
-                </div>
-                <span className="zg-tag zg-shrink-0">{ast.craft || 'ISS'}</span>
-              </div>
-            ))
-          ) : (
-            <p className="zg-panel__hint zg-p-sm zg-text-center">Loading roster…</p>
+        <div className="zg-row zg-row--start zg-min-w-0">
+          {isMobileGlobe && (
+            <button
+              type="button"
+              className="zg-btn zg-btn--icon zg-btn--ghost zg-shrink-0 zg-show-sm-only"
+              onClick={() => setMobileView('track')}
+              aria-label="Back to catalog"
+            >
+              <ChevronLeft className="zg-icon zg-icon-md" />
+            </button>
           )}
+          <h2 className="zg-panel__head">target.inspect</h2>
         </div>
+        {selectedDisplay && (
+          <span className={`zg-tag zg-tag--${selectedDisplay.group || 'visual'}`}>
+            {getGroupAbbrev(selectedDisplay)}
+          </span>
+        )}
+      </div>
+      <div className="zg-panel__body">
+        {inspectContent}
       </div>
     </>
+  );
+
+  const globeControls = (
+    <div className="zg-globe-controls" aria-label="Globe controls">
+      <div className="zg-globe-controls__zoom" aria-label="Globe zoom">
+        <button
+          type="button"
+          className="zg-btn zg-btn--icon zg-zoom__btn"
+          onClick={() => nudgeZoom(-1)}
+          aria-label="Zoom out"
+        >
+          <ZoomOut className="zg-icon zg-icon-md" />
+        </button>
+        <input
+          type="range"
+          className="zg-zoom__range zg-zoom__range--horizontal"
+          min={0}
+          max={100}
+          value={zoomToSlider(zoomAlt)}
+          onChange={(e) => setGlobeAltitude(sliderToZoom(Number(e.target.value)))}
+          aria-label="Zoom level"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={zoomToSlider(zoomAlt)}
+        />
+        <button
+          type="button"
+          className="zg-btn zg-btn--icon zg-zoom__btn"
+          onClick={() => nudgeZoom(1)}
+          aria-label="Zoom in"
+        >
+          <ZoomIn className="zg-icon zg-icon-md" />
+        </button>
+      </div>
+      <span className="zg-globe-controls__sep" aria-hidden="true" />
+      <button
+        type="button"
+        role="switch"
+        aria-checked={autoRotate}
+        aria-label={`Auto-rotate globe, currently ${autoRotate ? 'on' : 'off'}`}
+        title={autoRotate ? 'Pause globe rotation' : 'Resume globe rotation'}
+        className={`zg-rotate-toggle${autoRotate ? ' is-active' : ''}`}
+        onClick={toggleAutoRotate}
+      >
+        <RotateCw
+          className={`zg-icon zg-icon-sm zg-rotate-toggle__icon${autoRotate ? ' zg-icon--spin-slow' : ''}`}
+          aria-hidden="true"
+        />
+        <span className="zg-rotate-toggle__label">auto-rotate</span>
+        <span className="zg-rotate-toggle__track" aria-hidden="true">
+          <span className="zg-rotate-toggle__thumb" />
+        </span>
+      </button>
+    </div>
   );
 
   return (
@@ -617,169 +763,90 @@ export default function App() {
         />
         </div>
         <div className="zg-canvas-vignette" aria-hidden="true" />
-
-        <div className="zg-zoom" aria-label="Globe zoom">
-          <button
-            type="button"
-            className="zg-btn zg-btn--icon zg-zoom__btn"
-            onClick={() => nudgeZoom(1)}
-            aria-label="Zoom in"
-          >
-            <ZoomIn className="zg-icon zg-icon-md" />
-          </button>
-          <input
-            type="range"
-            className="zg-zoom__range"
-            min={0}
-            max={100}
-            value={zoomToSlider(zoomAlt)}
-            onChange={(e) => setGlobeAltitude(sliderToZoom(Number(e.target.value)))}
-            aria-label="Zoom level"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={zoomToSlider(zoomAlt)}
-          />
-          <button
-            type="button"
-            className="zg-btn zg-btn--icon zg-zoom__btn"
-            onClick={() => nudgeZoom(-1)}
-            aria-label="Zoom out"
-          >
-            <ZoomOut className="zg-icon zg-icon-md" />
-          </button>
-        </div>
+        {globeControls}
       </div>
 
       <header className="zg-nav">
         <div className="zg-brand">
           <h1 className="zg-brand__title">
-            Zero<span className="zg-brand__accent">Gravity</span>
+            <span className="zg-brand__name">Zero Gravity</span>
+            <span className="zg-brand__sep" aria-hidden="true"> · </span>
+            <span className="zg-brand__tag">norad telemetry</span>
           </h1>
-          <p className="zg-brand__sub">Live NORAD telemetry</p>
-          {isDemo && <span className="zg-demo-badge zg-demo-badge--inline">Local demo mode</span>}
+          {isDemo && <span className="zg-term-badge zg-term-badge--inline">[DEMO]</span>}
           {source === 'fallback' && !isDemo && (
-            <span className="zg-demo-badge zg-demo-badge--inline">Limited fallback feed</span>
+            <span className="zg-term-badge zg-term-badge--inline">[CACHE]</span>
           )}
         </div>
 
-        <div className="zg-metrics" aria-label="Summary metrics">
-          <span className="zg-metric">
-            <Satellite className="zg-icon zg-icon-sm zg-icon--accent" aria-hidden="true" />
-            <strong>{trackedCount}</strong>
-            <span className="zg-metric__label">tracked</span>
-          </span>
-          <span className="zg-metric">
-            <Radio className="zg-icon zg-icon-sm" aria-hidden="true" />
-            <strong>{stationsCount}</strong>
-            <span className="zg-metric__label">stations</span>
-          </span>
-          <span className="zg-metric zg-metric--live">
-            <Users className="zg-icon zg-icon-sm" aria-hidden="true" />
-            <strong>{crew.length}</strong>
-            <span className="zg-metric__label">crew</span>
-          </span>
-          <span className={`zg-metric${fetchState === 'error' ? ' zg-metric--error' : ''}`}>
-            <ShieldCheck className="zg-icon zg-icon-sm" aria-hidden="true" />
-            <span className="zg-metric__label">source</span>
-            <span className={`zg-metric__value${isDemo ? ' zg-metric__value--demo' : ''}${fetchState === 'error' ? ' zg-metric__value--error' : ''}`}>{source}</span>
-          </span>
-          <button
-            type="button"
-            className={refreshBtnClass}
-            onClick={fetchData}
-            disabled={fetchState === 'loading'}
-            aria-busy={fetchState === 'loading'}
-            aria-label="Refresh telemetry"
-          >
-            <RefreshCw className={`zg-icon zg-icon-md${fetchState === 'loading' ? ' zg-icon--spin' : ''}`} />
-          </button>
-        </div>
-
-        <div className="zg-nav__actions">
-          <button
-            type="button"
-            className={refreshBtnClass}
-            onClick={fetchData}
-            disabled={fetchState === 'loading'}
-            aria-busy={fetchState === 'loading'}
-            aria-label="Refresh telemetry"
-          >
-            <RefreshCw className={`zg-icon zg-icon-md${fetchState === 'loading' ? ' zg-icon--spin' : ''}`} />
-          </button>
-        </div>
-
-        <div className="zg-mobile-metrics" aria-label="Summary metrics">
-          <span className="zg-mobile-metric">
-            <Satellite className="zg-icon zg-icon-sm zg-icon--accent" aria-hidden="true" />
-            <strong>{trackedCount}</strong>
-            <span>tracked</span>
-          </span>
-          <span className="zg-mobile-metric">
-            <Radio className="zg-icon zg-icon-sm" aria-hidden="true" />
-            <strong>{stationsCount}</strong>
-            <span>stations</span>
-          </span>
-          <span className="zg-mobile-metric zg-mobile-metric--live">
-            <Users className="zg-icon zg-icon-sm" aria-hidden="true" />
-            <strong>{crew.length}</strong>
-            <span>crew</span>
-          </span>
-          <span className={`zg-mobile-metric${fetchState === 'error' ? ' zg-mobile-metric--error' : ''}`}>
-            <ShieldCheck className="zg-icon zg-icon-sm" aria-hidden="true" />
-            <span className={`zg-mobile-metric__value${fetchState === 'error' ? ' zg-mobile-metric__value--error' : ''}`}>{source}</span>
-          </span>
-        </div>
+        <button
+          type="button"
+          className={`zg-nav__sync${fetchState === 'loading' ? ' is-loading' : ''}${fetchState === 'error' ? ' is-error' : ''}`}
+          onClick={fetchData}
+          disabled={fetchState === 'loading'}
+          aria-busy={fetchState === 'loading'}
+          aria-label="Sync telemetry"
+        >
+          [ sync ]
+        </button>
       </header>
 
       <aside
         className={`zg-rail zg-rail--left${mobileView !== 'track' ? ' is-hidden' : ''}`}
-        aria-label="Satellite tracking"
+        aria-label="Satellite catalog"
       >
         <div className="zg-panel zg-panel--flex">
-          {trackPanel}
+          {catalogPanel}
         </div>
       </aside>
 
       <aside
-        className={`zg-rail zg-rail--right${mobileView === 'crew' ? ' is-open' : ''}`}
-        aria-label="Crew roster"
+        className={`zg-rail zg-rail--right${mobileView === 'detail' ? ' is-open' : ''}`}
+        aria-label="Satellite inspect"
       >
         <div className="zg-panel zg-panel--flex">
-          {crewPanel}
+          {inspectPanel}
         </div>
       </aside>
 
-      <footer className="zg-footer">
-        <span className="zg-row zg-row--start">
+      <footer className="zg-footer zg-footer--dense" aria-label="Feed status">
+        <p className="zg-footer__colophon">
           <span className="zg-live-dot" aria-hidden="true" />
-          <span className="zg-footer__status zg-hide-sm">Orbital feed active</span>
-          <span className="zg-footer__status zg-show-sm">Live</span>
-          <span className="zg-footer__sync zg-hide-md">· sync {lastSync.toLocaleTimeString()}</span>
-        </span>
-        <div className="zg-type-legend zg-type-legend--desktop" aria-label="Satellite types">
-          {Object.entries(GROUP_META).map(([key, meta]) => (
-            <span key={key} className="zg-type-legend__item">
-              <i className={`zg-type-legend__dot zg-type-legend__dot--${key}`} />
-              {meta.label}
-            </span>
-          ))}
-        </div>
-        <div className="zg-type-legend zg-type-legend--mobile" aria-label="Satellite types">
-          {Object.entries(GROUP_META).map(([key, meta]) => (
-            <span key={key} className="zg-type-legend__item" title={meta.label}>
-              <i className={`zg-type-legend__dot zg-type-legend__dot--${key}`} />
-              <span className="zg-type-legend__abbr">{meta.label.slice(0, 3)}</span>
-            </span>
-          ))}
-        </div>
-        <button
-          type="button"
-          className={`zg-btn zg-btn--compact${autoRotate ? ' zg-btn--active' : ''}`}
-          onClick={() => setAutoRotate(v => !v)}
-        >
-          <span className="zg-footer__rotate-label">Auto-rotate </span>
-          {autoRotate ? 'on' : 'off'}
-        </button>
+          <span className="zg-footer__token">FEED_OK</span>
+          <span className="zg-footer__sep" aria-hidden="true">·</span>
+          <span className="zg-footer__token">SYNC {lastSync.toLocaleTimeString()}</span>
+          <span className="zg-footer__sep" aria-hidden="true">·</span>
+          <span className="zg-footer__token">TRK={trackedCount}</span>
+          <span className="zg-footer__sep" aria-hidden="true">·</span>
+          <span className="zg-footer__token">STA={stationsCount}</span>
+          <span className="zg-footer__sep" aria-hidden="true">·</span>
+          <span className="zg-footer__token">CRW={crew.length}</span>
+          <span className="zg-footer__sep" aria-hidden="true">·</span>
+          <span className={`zg-footer__token${fetchState === 'error' ? ' zg-footer__token--error' : ''}${isDemo ? ' zg-footer__token--demo' : ''}`}>
+            SRC={source}
+          </span>
+          <span className="zg-footer__sep" aria-hidden="true">·</span>
+          <span className="zg-footer__token">LAYERS[</span>
+          {TYPE_KEYS.map((key, idx) => {
+            const meta = GROUP_META[key];
+            const on = visibleTypes[key];
+            return (
+              <React.Fragment key={key}>
+                {idx > 0 && <span className="zg-footer__sep" aria-hidden="true"> </span>}
+                <button
+                  type="button"
+                  aria-pressed={on}
+                  title={meta.label}
+                  className={`zg-footer__layer${on ? ' is-on' : ' is-off'}`}
+                  onClick={() => toggleType(key)}
+                >
+                  {meta.label.slice(0, 3).toUpperCase()}
+                </button>
+              </React.Fragment>
+            );
+          })}
+          <span className="zg-footer__token">]</span>
+        </p>
       </footer>
 
       <div className="zg-mobile-tabs" role="tablist" aria-label="Panels">
@@ -799,16 +866,16 @@ export default function App() {
           className={`zg-btn${mobileView === 'track' ? ' zg-btn--active' : ''}`}
           onClick={() => setMobileView('track')}
         >
-          Track
+          catalog
         </button>
         <button
           type="button"
           role="tab"
-          aria-selected={mobileView === 'crew'}
-          className={`zg-btn${mobileView === 'crew' ? ' zg-btn--active' : ''}`}
-          onClick={() => setMobileView('crew')}
+          aria-selected={mobileView === 'detail'}
+          className={`zg-btn${mobileView === 'detail' ? ' zg-btn--active' : ''}`}
+          onClick={() => setMobileView('detail')}
         >
-          Crew
+          inspect
         </button>
       </div>
     </div>

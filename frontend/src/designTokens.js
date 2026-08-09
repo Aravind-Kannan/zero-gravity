@@ -1,22 +1,22 @@
 /** Read canonical colors from tokens.css — single source for CSS + globe/Three.js */
 
 const FALLBACK = {
-  atmosphere: 'oklch(62% 0.12 48)',
-  selected: 'oklch(93% 0.008 250)',
-  hover: 'oklch(98% 0.006 48)',
-  pathStation: 'oklch(74% 0.18 48 / 0.33)',
-  pathSatellite: 'oklch(74% 0.18 48 / 0.6)',
+  atmosphere: 'oklch(56% 0.14 127)',
+  selected: 'oklch(91% 0.055 127)',
+  hover: 'oklch(93% 0.065 127)',
+  pathStation: 'oklch(79% 0.24 127 / 0.33)',
+  pathSatellite: 'oklch(79% 0.24 127 / 0.55)',
   types: {
-    station: 'oklch(72% 0.17 48)',
-    visual: 'oklch(68% 0.12 230)',
-    science: 'oklch(62% 0.14 290)',
-    weather: 'oklch(68% 0.12 155)',
+    station: 'oklch(79% 0.24 127)',
+    visual: 'oklch(72% 0.14 200)',
+    science: 'oklch(65% 0.16 310)',
+    weather: 'oklch(74% 0.14 85)',
   },
   rings: {
-    station: 'oklch(72% 0.17 48 / 0.6)',
-    visual: 'oklch(68% 0.12 230 / 0.53)',
-    science: 'oklch(62% 0.14 290 / 0.53)',
-    weather: 'oklch(68% 0.12 155 / 0.53)',
+    station: 'oklch(79% 0.24 127 / 0.6)',
+    visual: 'oklch(72% 0.14 200 / 0.53)',
+    science: 'oklch(65% 0.16 310 / 0.53)',
+    weather: 'oklch(74% 0.14 85 / 0.53)',
   },
 };
 
