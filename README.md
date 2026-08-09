@@ -21,9 +21,7 @@ NORAD TLE data and ISS crew info — polled in the background, cached in Valkey,
 
 </div>
 
-<!-- ![ZeroGravity live globe](docs/screenshots/globe-overview.png) -->
-
-*Add `docs/screenshots/globe-overview.png`, then uncomment the image line above.*
+![ZeroGravity live globe](docs/screenshots/globe-overview.png)
 
 ---
 
@@ -150,9 +148,7 @@ zcli push frontend
 
 The root `zerops.yaml` mirrors the service definitions. Cache is provisioned as a managed Valkey service; connection strings are injected as `${cache_*}` env vars.
 
-<!-- ![Zerops project dashboard](docs/screenshots/zerops-dashboard.png) -->
-
-*Add `docs/screenshots/zerops-dashboard.png`, then uncomment the image line above.*
+![Zerops project dashboard](docs/screenshots/zerops-dashboard.png)
 
 ---
 
