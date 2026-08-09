@@ -1,4 +1,5 @@
 const Redis = require('ioredis');
+const http = require('node:http');
 const https = require('node:https');
 const { URL } = require('node:url');
 
@@ -37,8 +38,9 @@ function formatFetchError(err) {
 
 async function httpsGetJson(url, { timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   const parsed = new URL(url);
+  const transport = parsed.protocol === 'http:' ? http : https;
   return new Promise((resolve, reject) => {
-    const req = https.request(
+    const req = transport.request(
       {
         hostname: parsed.hostname,
         path: `${parsed.pathname}${parsed.search}`,
@@ -133,17 +135,46 @@ async function fetchSatellites() {
   }
 }
 
+const CREW_SOURCES = [
+  {
+    label: 'Open Notify',
+    url: 'http://api.open-notify.org/astros.json',
+    normalize(data) {
+      return Array.isArray(data?.people) ? data.people : null;
+    },
+  },
+  {
+    label: 'ISS APIs (corquaid)',
+    url: 'https://corquaid.github.io/international-space-station-APIs/JSON/people-in-space.json',
+    normalize(data) {
+      if (!Array.isArray(data?.people)) return null;
+      return data.people.map((person) => ({
+        name: person.name,
+        craft: person.iss ? 'ISS' : 'Tiangong',
+      }));
+    },
+  },
+];
+
 async function fetchCrew() {
-  try {
-    console.log('[Ingestor] Fetching ISS astronaut crew roster from Open Notify...');
-    const data = await fetchJson('https://api.open-notify.org/astros.json');
-    if (data && Array.isArray(data.people)) {
-      await redis.set('iss:crew', JSON.stringify(data.people), 'EX', 300);
-      console.log(`[Ingestor] Successfully cached ${data.people.length} crew members into 'iss:crew' (TTL 300s)`);
+  for (const source of CREW_SOURCES) {
+    try {
+      console.log(`[Ingestor] Fetching crew roster from ${source.label}...`);
+      const data = await fetchJson(source.url);
+      const people = source.normalize(data);
+      if (people?.length) {
+        await redis.set('iss:crew', JSON.stringify(people), 'EX', 300);
+        console.log(
+          `[Ingestor] Cached ${people.length} crew members from ${source.label} into 'iss:crew' (TTL 300s)`,
+        );
+        return;
+      }
+      console.warn(`[Ingestor] Crew source "${source.label}" returned no people`);
+    } catch (err) {
+      console.warn(`[Ingestor] Crew source "${source.label}" failed:`, formatFetchError(err));
     }
-  } catch (err) {
-    console.error('[Ingestor] Failed fetching crew roster:', formatFetchError(err));
   }
+  console.error('[Ingestor] All crew sources failed');
 }
 
 async function poll() {
