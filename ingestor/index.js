@@ -62,7 +62,7 @@ async function fetchSatellites() {
       .slice(0, MAX_SATELLITES);
 
     if (combined.length > 0) {
-      await redis.set('satellites:live', JSON.stringify(combined), 'EX', 90);
+      await redis.set('satellites:live', JSON.stringify(combined), 'EX', 300);
       console.log(`[Ingestor] Cached ${combined.length} satellites (stations + visual + science + weather)`);
     } else {
       console.warn('[Ingestor] Empty response from all CelesTrak groups');
@@ -79,8 +79,8 @@ async function fetchCrew() {
     if (res.ok) {
       const data = await res.json();
       if (data && Array.isArray(data.people)) {
-        await redis.set('iss:crew', JSON.stringify(data.people), 'EX', 90);
-        console.log(`[Ingestor] Successfully cached ${data.people.length} crew members into 'iss:crew' (TTL 90s)`);
+        await redis.set('iss:crew', JSON.stringify(data.people), 'EX', 300);
+        console.log(`[Ingestor] Successfully cached ${data.people.length} crew members into 'iss:crew' (TTL 300s)`);
       }
     }
   } catch (err) {

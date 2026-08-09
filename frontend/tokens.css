@@ -144,6 +144,10 @@
   --shadow-list-active: 0 0 0 1px oklch(74% 0.18 48 / 0.15);
 
   --zg-nav-h: 4.25rem;
+  --zg-rail-gap: var(--space-2xs);
+  --zg-rail-right-w: 16rem;
+  --zg-rail-inset: clamp(var(--space-sm), 2vw, var(--space-md));
+  --zg-zoom-rail-gap: var(--space-lg);
   --zg-footer-h: 2.5rem;
   --zg-mobile-tab-h: 2.85rem;
   --zg-bottom-chrome: calc(var(--zg-footer-h) + var(--zg-mobile-tab-h) + env(safe-area-inset-bottom, 0px));

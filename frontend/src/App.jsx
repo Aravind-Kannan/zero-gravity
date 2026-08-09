@@ -106,7 +106,7 @@ export default function App() {
   const [globeReady, setGlobeReady] = useState(false);
   const [globeMaterial, setGlobeMaterial] = useState(null);
   const [mobileView, setMobileView] = useState('globe');
-  const [isDemo, setIsDemo] = useState(IS_DEV);
+  const [isDemo, setIsDemo] = useState(false);
   const [hoverSat, setHoverSat] = useState(null);
   const [fetchState, setFetchState] = useState('idle');
   const [zoomAlt, setZoomAlt] = useState(ZOOM.default);
@@ -189,15 +189,10 @@ export default function App() {
       ]);
 
       if (satRes?.satellites?.length) {
-        const live = satRes.source === 'cache';
-        if (live) {
-          mergeSatelliteListInPlace(satellitesMaster.current, satRes.satellites);
-        } else {
-          satellitesMaster.current = mergeSatelliteList(satellitesMaster.current, satRes.satellites);
-        }
+        mergeSatelliteListInPlace(satellitesMaster.current, satRes.satellites);
         setUiTick(t => t + 1);
         setSource(satRes.source || 'live');
-        setIsDemo(!live);
+        setIsDemo(false);
         const merged = satellitesMaster.current;
         const current = selectedSatRef.current;
         if (!current) {
@@ -206,28 +201,25 @@ export default function App() {
           const updated = merged.find(s => s.id === current.id);
           if (updated && updated !== current) setSelectedSat(updated);
         }
-      } else {
+      } else if (IS_DEV) {
         applyDemoData();
       }
 
       if (crewRes?.crew?.length) {
         setCrew(crewRes.crew);
-      } else if (IS_DEV && !crewRes?.crew?.length) {
-        applyDemoData();
       }
 
       setLastSync(new Date());
       setFetchState('idle');
     } catch (err) {
       console.warn('API unavailable — using demo orbital data', err.message);
-      applyDemoData();
+      if (IS_DEV) applyDemoData();
       setFetchState('idle');
-      if (!IS_DEV) setSource('demo');
+      if (!IS_DEV) setSource('offline');
     }
   };
 
   useEffect(() => {
-    applyDemoData();
     fetchData();
     const interval = setInterval(fetchData, FETCH_MS);
     return () => clearInterval(interval);
@@ -435,7 +427,8 @@ export default function App() {
     <>
       <div className="zg-panel__bar">
         <h2 className="zg-panel__head">Orbital track</h2>
-        {isDemo && <span className="zg-demo-badge">Demo data</span>}
+        {source === 'demo' && <span className="zg-demo-badge">Demo data</span>}
+        {source === 'fallback' && <span className="zg-demo-badge">Cache warming</span>}
       </div>
 
       <div className="zg-panel__controls">
@@ -455,7 +448,7 @@ export default function App() {
           {[
             { id: 'all', short: `All ${trackedCount}`, long: `All ${trackedCount}` },
             { id: 'station', short: `Sta ${stationsCount}`, long: `Stations ${stationsCount}` },
-            { id: 'visual', short: `Sats ${visualCount}`, long: `Satellites ${visualCount}` },
+            { id: 'visual', short: `Sats ${visualCount}`, long: `Sats ${visualCount}` },
           ].map(tab => (
             <button
               key={tab.id}
@@ -664,6 +657,9 @@ export default function App() {
           </h1>
           <p className="zg-brand__sub">Live NORAD telemetry</p>
           {isDemo && <span className="zg-demo-badge zg-demo-badge--inline">Local demo mode</span>}
+          {source === 'fallback' && !isDemo && (
+            <span className="zg-demo-badge zg-demo-badge--inline">Limited fallback feed</span>
+          )}
         </div>
 
         <div className="zg-metrics" aria-label="Summary metrics">

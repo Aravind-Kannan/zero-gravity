@@ -144,6 +144,19 @@
     .zg-tab__long { display: inline; }
   }
 
+  /* Side pane is narrow — keep compact tab labels */
+  .zg-rail .zg-tab__short { display: inline; }
+  .zg-rail .zg-tab__long { display: none; }
+
+  .zg-tab__short,
+  .zg-tab__long {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+    font-variant-numeric: tabular-nums;
+  }
+
   .zg-type-legend--mobile { display: none; }
   .zg-type-legend--desktop { display: none; }
 
@@ -238,7 +251,12 @@
 
   @media (min-width: 48rem) {
     .zg-zoom {
-      right: calc(min(100% - 2 * var(--space-sm), 16rem) + var(--space-md));
+      right: calc(
+        var(--zg-rail-inset)
+        + min(calc(100% - 2 * var(--space-sm)), var(--zg-rail-right-w))
+        + var(--zg-zoom-rail-gap)
+      );
+      bottom: calc(var(--zg-footer-h) + var(--zg-rail-gap));
     }
   }
 
@@ -310,6 +328,13 @@
     outline-offset: 2px;
   }
 
+  @media (min-width: 40rem) {
+    :root {
+      --zg-nav-h: 5.5rem;
+      --zg-rail-gap: var(--space-xs);
+    }
+  }
+
   .zg-nav {
     position: absolute;
     top: 0; left: 0; right: 0;
@@ -318,8 +343,9 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-xs) var(--space-sm);
-    padding: var(--space-sm) clamp(var(--space-sm), 3vw, var(--space-lg));
+    gap: var(--space-2xs) var(--space-sm);
+    min-height: var(--zg-nav-h);
+    padding: var(--space-sm) clamp(var(--space-sm), 3vw, var(--space-lg)) var(--space-2xs);
     background: linear-gradient(to bottom, var(--color-paper-a92), var(--color-paper-a0));
     pointer-events: none;
   }
@@ -370,13 +396,21 @@
   .zg-metrics {
     display: none;
     align-items: center;
-    gap: var(--space-xs);
+    flex-wrap: wrap;
+    gap: var(--space-2xs);
     font-family: var(--font-body);
     font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
 
-  @media (min-width: 40rem) { .zg-metrics { display: flex; } }
+  @media (min-width: 40rem) {
+    .zg-metrics {
+      display: flex;
+      justify-content: flex-end;
+      max-width: min(100%, 42rem);
+      margin-left: auto;
+    }
+  }
 
   .zg-nav__actions {
     display: flex;
@@ -551,19 +585,19 @@
   .zg-rail > * { pointer-events: auto; }
 
   .zg-rail--left {
-    top: 4.5rem;
+    top: calc(var(--zg-nav-h) + var(--zg-rail-gap));
     left: clamp(var(--space-sm), 2vw, var(--space-md));
-    bottom: 4.5rem;
+    bottom: calc(var(--zg-footer-h) + var(--zg-rail-gap));
     width: min(100% - 2 * var(--space-sm), 18rem);
-    max-height: calc(100dvh - 9rem);
+    max-height: calc(100dvh - var(--zg-nav-h) - var(--zg-footer-h) - 2 * var(--zg-rail-gap));
   }
 
   .zg-rail--right {
-    top: 4.5rem;
-    right: clamp(var(--space-sm), 2vw, var(--space-md));
-    bottom: 4.5rem;
-    width: min(100% - 2 * var(--space-sm), 16rem);
-    max-height: calc(100dvh - 9rem);
+    top: calc(var(--zg-nav-h) + var(--space-sm));
+    right: var(--zg-rail-inset);
+    bottom: calc(var(--zg-footer-h) + var(--zg-rail-gap));
+    width: min(calc(100% - 2 * var(--space-sm)), var(--zg-rail-right-w));
+    max-height: calc(100dvh - var(--zg-nav-h) - var(--zg-footer-h) - var(--space-sm) - var(--zg-rail-gap));
   }
 
   @media (max-width: 47.99rem) {
@@ -626,7 +660,7 @@
   .zg-rail .zg-panel__head { font-size: var(--text-md); }
   .zg-rail .zg-panel__hint { font-size: var(--text-sm); }
   .zg-rail .zg-input { font-size: var(--text-sm); }
-  .zg-rail .zg-tab { font-size: var(--text-sm); }
+  .zg-rail .zg-tab { font-size: var(--text-xs); padding: 0.5rem 0.3rem; }
   .zg-rail .zg-list-item { font-size: var(--text-sm); }
   .zg-rail .zg-sat-name,
   .zg-rail .zg-crew-row__name { font-size: var(--text-sm); }
@@ -707,12 +741,13 @@
     flex: 1;
     min-width: 0;
     min-height: 2.125rem;
-    padding: 0.5rem 0.5rem;
+    padding: 0.5rem 0.35rem;
     font-family: var(--font-body);
     font-size: var(--text-sm);
     font-weight: 500;
     line-height: 1.2;
     text-align: center;
+    overflow: hidden;
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     background: transparent;
