@@ -31,6 +31,9 @@ All UI copy and telemetry use Figtree. Numeric fields use `font-variant-numeric:
 
 ## Tokens (canonical · `frontend/tokens.css`)
 
+All UI and globe colors reference named tokens — no inline hex/oklch in components.
+JS reads globe/type colors via `frontend/src/designTokens.js` (computed from CSS vars).
+
 ```css
 :root {
   --color-paper:      oklch(13% 0.022 250);
@@ -38,12 +41,17 @@ All UI copy and telemetry use Figtree. Numeric fields use `font-variant-numeric:
   --color-accent:     oklch(72% 0.17 48);
   --color-ink:        oklch(93% 0.008 250);
 
+  --color-type-station: oklch(72% 0.17 48);
+  --color-type-visual:  oklch(68% 0.12 230);
+  --color-globe-atmo:   oklch(62% 0.12 48);
+
   --font-display: "Syne", system-ui, sans-serif;
   --font-body:    "Figtree", system-ui, sans-serif;
 }
 ```
 
 Component classes use the `zg-` prefix in `frontend/src/index.css`.
+Layout utilities: `zg-row`, `zg-icon-sm`, `zg-panel--flex`.
 
 ## CTA voice
 

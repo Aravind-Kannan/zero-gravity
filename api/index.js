@@ -107,7 +107,6 @@ function propagateSatellites(rawList) {
         inclination: item.INCLINATION ? Number(item.INCLINATION.toFixed(2)) : 51.64,
         velocity: orb.velocity,
         group: item._group || (item.OBJECT_NAME && item.OBJECT_NAME.includes('ISS') ? 'station' : 'visual'),
-        epoch: item.EPOCH
       });
     } catch (e) {
       // skip item if math fails

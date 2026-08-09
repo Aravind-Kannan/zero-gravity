@@ -1,6 +1,6 @@
-/* Hallmark · genre: atmospheric · theme: Midnight
+/* Hallmark · genre: atmospheric · theme: Midnight · design-system: design.md
  * paper-band: dark · display-style: grotesk-sans · accent-hue: warm
- * mood: atmospheric · macrostructure: Workbench
+ * macrostructure: Workbench · designed-as-app
  */
 
 :root {
@@ -11,18 +11,101 @@
   --color-ink-2:      oklch(72% 0.012 250);
   --color-ink-muted:  oklch(55% 0.014 250);
   --color-rule:       oklch(28% 0.02 250);
-  --color-accent:     oklch(72% 0.17 48);
+  --color-accent:     oklch(74% 0.18 48);
   --color-accent-ink: oklch(16% 0.03 48);
-  --color-accent-dim: oklch(58% 0.1 48);
-  --color-accent-hot: oklch(65% 0.19 28);
+  --color-accent-dim: oklch(60% 0.11 48);
+  --color-accent-hot: oklch(67% 0.2 28);
+  --color-accent-glow: oklch(74% 0.18 48 / 0.35);
   --color-focus:      oklch(78% 0.14 48);
   --color-live:       oklch(68% 0.14 145);
   --color-live-ink:   oklch(18% 0.04 145);
+  --color-error:      oklch(62% 0.18 25);
 
+  /* Accent alpha scale */
+  --color-accent-a12: oklch(74% 0.18 48 / 0.12);
+  --color-accent-a14: oklch(74% 0.18 48 / 0.14);
+  --color-accent-a15: oklch(74% 0.18 48 / 0.15);
+  --color-accent-a25: oklch(72% 0.17 48 / 0.25);
+  --color-accent-a28: oklch(74% 0.18 48 / 0.28);
+  --color-accent-a30: oklch(74% 0.18 48 / 0.3);
+  --color-accent-a35: oklch(72% 0.17 48 / 0.35);
+  --color-accent-a40: oklch(74% 0.18 48 / 0.4);
+  --color-accent-a42: oklch(74% 0.18 48 / 0.42);
+  --color-accent-a45: oklch(72% 0.17 48 / 0.45);
+  --color-accent-a55: oklch(74% 0.18 48 / 0.55);
+
+  /* Hot accent alpha */
+  --color-hot-a10: oklch(65% 0.19 28 / 0.1);
+  --color-hot-a12: oklch(65% 0.19 28 / 0.12);
+  --color-hot-a28: oklch(65% 0.19 28 / 0.28);
+  --color-hot-a35: oklch(65% 0.19 28 / 0.35);
+  --color-hot-a45: oklch(65% 0.19 28 / 0.45);
+  --color-hot-a55: oklch(65% 0.19 28 / 0.55);
+
+  /* Satellite type colors */
+  --color-type-station:  oklch(72% 0.17 48);
+  --color-type-visual:   oklch(68% 0.12 230);
+  --color-type-science:  oklch(62% 0.14 290);
+  --color-type-weather:  oklch(68% 0.12 155);
+
+  --color-type-station-ring:  oklch(72% 0.17 48 / 0.6);
+  --color-type-visual-ring:   oklch(68% 0.12 230 / 0.53);
+  --color-type-science-ring:  oklch(62% 0.14 290 / 0.53);
+  --color-type-weather-ring:  oklch(68% 0.12 155 / 0.53);
+
+  --color-type-visual-a12:  oklch(68% 0.12 230 / 0.12);
+  --color-type-visual-a14:  oklch(68% 0.12 230 / 0.14);
+  --color-type-visual-a35:  oklch(68% 0.12 230 / 0.35);
+  --color-type-science-a12: oklch(62% 0.14 290 / 0.12);
+  --color-type-science-a14: oklch(62% 0.14 290 / 0.14);
+  --color-type-science-a35: oklch(62% 0.14 290 / 0.35);
+  --color-type-weather-a12: oklch(68% 0.12 155 / 0.12);
+  --color-type-weather-a14: oklch(68% 0.12 155 / 0.14);
+  --color-type-weather-a35: oklch(68% 0.12 155 / 0.35);
+
+  /* Orbit band label colors */
+  --color-band-leo: oklch(74% 0.18 48);
+  --color-band-meo: oklch(62% 0.04 48);
+  --color-band-geo: oklch(82% 0.04 250);
+
+  --color-band-leo-a30:  oklch(74% 0.18 48 / 0.3);
+  --color-band-meo-a35:  oklch(55% 0.04 48 / 0.35);
+  --color-band-geo-a35:  oklch(75% 0.04 250 / 0.35);
+
+  /* Globe data layer */
   --color-globe-atmo:    oklch(62% 0.12 48);
   --color-globe-station: oklch(72% 0.17 48);
   --color-globe-sat:     oklch(52% 0.06 48);
   --color-globe-select:  oklch(93% 0.008 250);
+  --color-globe-hover:   oklch(98% 0.006 48);
+  --color-path-station:  oklch(74% 0.18 48 / 0.33);
+  --color-path-satellite: oklch(74% 0.18 48 / 0.6);
+
+  /* Surface overlays */
+  --color-paper-a0:   oklch(13% 0.022 250 / 0);
+  --color-paper-a85:  oklch(17% 0.026 250 / 0.85);
+  --color-paper-a88:  oklch(17% 0.026 250 / 0.88);
+  --color-paper-a92:  oklch(13% 0.022 250 / 0.92);
+  --color-paper-a94:  oklch(13% 0.022 250 / 0.94);
+  --color-paper-a96:  oklch(17% 0.026 250 / 0.96);
+  --color-label-bg:   oklch(15% 0.024 250 / 0.97);
+  --color-panel-top:  oklch(19% 0.028 250);
+  --color-inspect-top: oklch(22% 0.03 250);
+  --color-ink-faint-a05: oklch(93% 0.008 250 / 0.05);
+  --color-ink-faint-a02: oklch(93% 0.008 250 / 0.02);
+  --color-ink-faint-a025: oklch(93% 0.008 250 / 0.025);
+  --color-rule-a80:   oklch(28% 0.02 250 / 0.8);
+
+  /* Atmospheric blooms */
+  --color-bloom-warm: oklch(64% 0.16 48 / 0.22);
+  --color-bloom-hot:  oklch(58% 0.14 28 / 0.16);
+  --color-vignette-edge: oklch(8% 0.02 250 / 0.55);
+  --color-vignette-top:  oklch(13% 0.022 250 / 0.35);
+  --color-vignette-bottom: oklch(13% 0.022 250 / 0.45);
+
+  /* Suspension tether gradient stops */
+  --color-tether-a05: oklch(65% 0.19 28 / 0.05);
+  --color-tether-a35: oklch(65% 0.19 28 / 0.35);
 
   --font-display: "Syne", system-ui, sans-serif;
   --font-body:    "Figtree", system-ui, sans-serif;
@@ -47,14 +130,18 @@
   --dur-short:   180ms;
   --dur-med:     280ms;
   --dur-pulse:   2.4s;
+  --dur-spin:    900ms;
 
   --radius-sm:   0.375rem;
   --radius-md:   0.625rem;
   --radius-lg:   0.875rem;
   --radius-pill: 999px;
 
-  --shadow-lift: 0 12px 40px oklch(8% 0.02 250 / 0.55);
-  --shadow-glow: 0 0 0 1px oklch(72% 0.17 48 / 0.25);
+  --shadow-lift: 0 16px 48px oklch(6% 0.02 250 / 0.62);
+  --shadow-glow: 0 0 0 1px oklch(74% 0.18 48 / 0.28), 0 0 24px oklch(74% 0.18 48 / 0.12);
+  --shadow-panel: inset 0 1px 0 oklch(93% 0.008 250 / 0.06);
+  --shadow-type-dot: 0 0 6px oklch(74% 0.18 48 / 0.2);
+  --shadow-list-active: 0 0 0 1px oklch(74% 0.18 48 / 0.15);
 
   --zg-nav-h: 4.25rem;
   --zg-footer-h: 2.5rem;

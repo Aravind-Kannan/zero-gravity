@@ -1,4 +1,12 @@
-import { TextureLoader, ShaderMaterial, Vector2 } from 'three';
+import {
+  TextureLoader,
+  ShaderMaterial,
+  Vector2,
+  LinearFilter,
+  LinearMipMapLinearFilter,
+  RepeatWrapping,
+  ClampToEdgeWrapping,
+} from 'three';
 
 export const dayNightShader = {
   vertexShader: `
@@ -14,8 +22,10 @@ export const dayNightShader = {
     #define PI 3.141592653589793
     uniform sampler2D dayTexture;
     uniform sampler2D nightTexture;
+    uniform sampler2D bumpTexture;
     uniform vec2 sunPosition;
     uniform vec2 globeRotation;
+    uniform float bumpScale;
     varying vec3 vNormal;
     varying vec2 vUv;
 
@@ -50,13 +60,15 @@ export const dayNightShader = {
       float intensity = dot(normalize(vNormal), normalize(rotatedSunDirection));
       vec4 dayColor = texture2D(dayTexture, vUv);
       vec4 nightColor = texture2D(nightTexture, vUv);
-      float blendFactor = smoothstep(-0.1, 0.1, intensity);
+      float bump = texture2D(bumpTexture, vUv).r;
+      dayColor.rgb *= 1.0 + bump * bumpScale;
+      nightColor.rgb *= 1.0 + bump * bumpScale * 0.35;
+      float blendFactor = smoothstep(-0.12, 0.14, intensity);
       gl_FragColor = mix(nightColor, dayColor, blendFactor);
     }
   `,
 };
 
-/** Approximate subsolar point from UTC (lng/lat in degrees). */
 export function sunPositionAt(date = new Date()) {
   const dt = +date;
   const day = Date.UTC(
@@ -73,26 +85,51 @@ export function sunPositionAt(date = new Date()) {
   return [lng, declination];
 }
 
+function tuneGlobeTexture(texture, { anisotropy = 16 } = {}) {
+  texture.anisotropy = anisotropy;
+  texture.minFilter = LinearMipMapLinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.generateMipmaps = true;
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
+  return texture;
+}
+
 export async function createDayNightGlobeMaterial({
   dayUrl = '/textures/earth-day.jpg',
   nightUrl = '/textures/earth-night.jpg',
+  bumpUrl = '/textures/earth-topology.png',
+  anisotropy = 16,
 } = {}) {
   const loader = new TextureLoader();
-  const [dayTexture, nightTexture] = await Promise.all([
+  const [dayTexture, nightTexture, bumpTexture] = await Promise.all([
     loader.loadAsync(dayUrl),
     loader.loadAsync(nightUrl),
+    loader.loadAsync(bumpUrl),
   ]);
+
+  [dayTexture, nightTexture, bumpTexture].forEach((tex) => tuneGlobeTexture(tex, { anisotropy }));
 
   const material = new ShaderMaterial({
     uniforms: {
       dayTexture: { value: dayTexture },
       nightTexture: { value: nightTexture },
+      bumpTexture: { value: bumpTexture },
+      bumpScale: { value: 0.18 },
       sunPosition: { value: new Vector2(...sunPositionAt()) },
       globeRotation: { value: new Vector2(0, 0) },
     },
     vertexShader: dayNightShader.vertexShader,
     fragmentShader: dayNightShader.fragmentShader,
   });
+
+  material.userData.tuneRenderer = (renderer) => {
+    const max = renderer?.capabilities?.getMaxAnisotropy?.() ?? anisotropy;
+    [dayTexture, nightTexture, bumpTexture].forEach((tex) => {
+      tex.anisotropy = max;
+      tex.needsUpdate = true;
+    });
+  };
 
   return material;
 }

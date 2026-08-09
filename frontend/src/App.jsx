@@ -8,22 +8,59 @@ import {
   RefreshCw,
   Radio,
   ShieldCheck,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import {
   createDayNightGlobeMaterial,
   updateGlobeSun,
   updateGlobeRotation,
 } from './globeDayNight.js';
+import { getDemoPayload, propagateDemoSatellites } from './mockData.js';
+import { satelliteDisplayAltitude, meshObjectAltitude, altitudeBandLabel, findNearestSatellite } from './orbitPath.js';
+import { getGroupColor, getGroupLabel, getGroupAbbrev, GROUP_META } from './satelliteTypes.js';
+import { GLOBE_UI } from './globeColors.js';
+import { tickDownlinkOnObject, retuneDownlinkOnObject } from './transmissionPing.js';
+import { getGlobeSatObject } from './globeObjectCache.js';
+import { placeOnGlobe, applySelectionScale, applySelectionHighlight } from './globeObjectUpdate.js';
+import { mergeSatelliteList, mergeSatelliteListInPlace, filterSatellites, catalogKey, registerGlobeMesh, forEachGlobeMesh, pruneGlobeMeshRegistry } from './globeSatelliteLayer.js';
+import { downlinkReachLength } from './orbitPath.js';
 
-/* Globe colors — mirror frontend/tokens.css (Midnight) */
-const GLOBE = {
-  atmosphere: '#c4893a',
-  station: '#e8a04a',
-  satellite: '#8a7355',
-  selected: '#ebeaf0',
-  ringIss: '#e07040',
-  ringStation: '#e8a04a',
-};
+const IS_DEV = import.meta.env.DEV;
+const PROXIMITY_DEG = 7;
+const ZOOM = { min: 0.35, max: 4.5, step: 0.28, default: 2.5 };
+const DEMO_TICK_MS = 5000;
+const UI_SYNC_MS = 5000;
+const FETCH_MS = IS_DEV ? 30000 : 10000;
+
+function clampZoom(alt) {
+  return Math.min(ZOOM.max, Math.max(ZOOM.min, alt));
+}
+
+function zoomToSlider(alt) {
+  const t = (ZOOM.max - clampZoom(alt)) / (ZOOM.max - ZOOM.min);
+  return Math.round(t * 100);
+}
+
+function sliderToZoom(value) {
+  return clampZoom(ZOOM.max - (value / 100) * (ZOOM.max - ZOOM.min));
+}
+
+function useMobileGlobe() {
+  const [mobile, setMobile] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 47.99rem), (pointer: coarse)').matches;
+  });
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 47.99rem), (pointer: coarse)');
+    const update = () => setMobile(mq.matches);
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  return mobile;
+}
 
 function getSatelliteFlag(sat) {
   const name = (sat?.name || '').toUpperCase();
@@ -59,7 +96,6 @@ export default function App() {
     height: typeof window !== 'undefined' ? window.innerHeight : 800,
   });
 
-  const [satellites, setSatellites] = useState([]);
   const [crew, setCrew] = useState([]);
   const [source, setSource] = useState('connecting');
   const [selectedSat, setSelectedSat] = useState(null);
@@ -70,6 +106,39 @@ export default function App() {
   const [globeReady, setGlobeReady] = useState(false);
   const [globeMaterial, setGlobeMaterial] = useState(null);
   const [mobileView, setMobileView] = useState('globe');
+  const [isDemo, setIsDemo] = useState(IS_DEV);
+  const [hoverSat, setHoverSat] = useState(null);
+  const [fetchState, setFetchState] = useState('idle');
+  const [zoomAlt, setZoomAlt] = useState(ZOOM.default);
+  const [uiTick, setUiTick] = useState(0);
+  const isMobileGlobe = useMobileGlobe();
+  const selectedSatRef = useRef(null);
+  const selectedIdRef = useRef(null);
+  const satellitesMaster = useRef([]);
+
+  useEffect(() => {
+    selectedSatRef.current = selectedSat;
+    selectedIdRef.current = selectedSat?.id ?? null;
+  }, [selectedSat]);
+
+  const applyDemoData = useCallback((now = new Date()) => {
+    const demo = getDemoPayload(now);
+    const merged = mergeSatelliteList(satellitesMaster.current, demo.satellites);
+    satellitesMaster.current = merged;
+    setUiTick(t => t + 1);
+    setCrew(demo.crew);
+    setSource('demo');
+    setIsDemo(true);
+    setLastSync(now);
+
+    const current = selectedSatRef.current;
+    if (!current && merged.length > 0) {
+      setSelectedSat(merged.find(s => s.name.includes('ISS')) || merged[0]);
+    } else if (current) {
+      const updated = merged.find(s => s.id === current.id);
+      if (updated && updated !== current) setSelectedSat(updated);
+    }
+  }, []);
 
   const configureGlobeControls = (rotate) => {
     if (!globeEl.current) return;
@@ -78,6 +147,21 @@ export default function App() {
     controls.autoRotate = rotate;
     controls.autoRotateSpeed = 0.6;
   };
+
+  const setGlobeAltitude = useCallback((alt, { animate = false } = {}) => {
+    if (!globeEl.current) return;
+    const next = clampZoom(alt);
+    const pov = globeEl.current.pointOfView?.() || { lat: 0, lng: 0, altitude: ZOOM.default };
+    globeEl.current.pointOfView(
+      { lat: pov.lat, lng: pov.lng, altitude: next },
+      animate ? 350 : 0,
+    );
+    setZoomAlt(next);
+  }, []);
+
+  const nudgeZoom = useCallback((direction) => {
+    setGlobeAltitude(zoomAlt - direction * ZOOM.step, { animate: true });
+  }, [zoomAlt, setGlobeAltitude]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -91,39 +175,81 @@ export default function App() {
   }, []);
 
   const fetchData = async () => {
+    setFetchState('loading');
     try {
       const [satRes, crewRes] = await Promise.all([
-        fetch('/api/satellites').then(r => r.json()),
-        fetch('/api/crew').then(r => r.json()),
+        fetch('/api/satellites').then(r => {
+          if (!r.ok) throw new Error(`satellites ${r.status}`);
+          return r.json();
+        }),
+        fetch('/api/crew').then(r => {
+          if (!r.ok) throw new Error(`crew ${r.status}`);
+          return r.json();
+        }),
       ]);
 
-      if (satRes?.satellites) {
-        setSatellites(satRes.satellites);
-        setSource(satRes.source || 'live');
-        if (!selectedSat && satRes.satellites.length > 0) {
-          const iss = satRes.satellites.find(s => s.name.includes('ISS')) || satRes.satellites[0];
-          setSelectedSat(iss);
-        } else if (selectedSat) {
-          const updated = satRes.satellites.find(s => s.id === selectedSat.id);
-          if (updated) setSelectedSat(updated);
+      if (satRes?.satellites?.length) {
+        const live = satRes.source === 'cache';
+        if (live) {
+          mergeSatelliteListInPlace(satellitesMaster.current, satRes.satellites);
+        } else {
+          satellitesMaster.current = mergeSatelliteList(satellitesMaster.current, satRes.satellites);
         }
+        setUiTick(t => t + 1);
+        setSource(satRes.source || 'live');
+        setIsDemo(!live);
+        const merged = satellitesMaster.current;
+        const current = selectedSatRef.current;
+        if (!current) {
+          setSelectedSat(merged.find(s => s.name.includes('ISS')) || merged[0]);
+        } else {
+          const updated = merged.find(s => s.id === current.id);
+          if (updated && updated !== current) setSelectedSat(updated);
+        }
+      } else {
+        applyDemoData();
       }
 
-      if (crewRes?.crew) {
+      if (crewRes?.crew?.length) {
         setCrew(crewRes.crew);
+      } else if (IS_DEV && !crewRes?.crew?.length) {
+        applyDemoData();
       }
 
       setLastSync(new Date());
+      setFetchState('idle');
     } catch (err) {
-      console.error('Error fetching orbital data:', err);
+      console.warn('API unavailable — using demo orbital data', err.message);
+      applyDemoData();
+      setFetchState('idle');
+      if (!IS_DEV) setSource('demo');
     }
   };
 
   useEffect(() => {
+    applyDemoData();
     fetchData();
-    const interval = setInterval(fetchData, 5000);
+    const interval = setInterval(fetchData, FETCH_MS);
     return () => clearInterval(interval);
-  }, []);
+  }, [applyDemoData]);
+
+  useEffect(() => {
+    if (!isDemo) return undefined;
+    const tick = () => {
+      mergeSatelliteListInPlace(satellitesMaster.current, propagateDemoSatellites(new Date()));
+    };
+    const uiSync = () => {
+      setLastSync(new Date());
+      setUiTick(t => t + 1);
+    };
+    tick();
+    const orbitInterval = setInterval(tick, DEMO_TICK_MS);
+    const uiInterval = setInterval(uiSync, UI_SYNC_MS);
+    return () => {
+      clearInterval(orbitInterval);
+      clearInterval(uiInterval);
+    };
+  }, [isDemo]);
 
   useEffect(() => {
     if (globeReady) {
@@ -145,14 +271,46 @@ export default function App() {
   }, [globeMaterial, lastSync]);
 
   useEffect(() => {
-    if (!globeReady || !globeMaterial) return;
+    if (!globeReady) return undefined;
+    const pov = globeEl.current?.pointOfView?.();
+    if (pov?.altitude != null) setZoomAlt(clampZoom(pov.altitude));
+
+    const controls = globeEl.current?.controls?.();
+    if (!controls) return undefined;
+
+    const onChange = () => {
+      const current = globeEl.current?.pointOfView?.();
+      if (current?.altitude != null) setZoomAlt(clampZoom(current.altitude));
+    };
+    controls.addEventListener('change', onChange);
+    return () => controls.removeEventListener('change', onChange);
+  }, [globeReady]);
+
+  useEffect(() => {
     let frame;
-    const tick = () => {
-      const pov = globeEl.current?.pointOfView?.();
-      if (pov) updateGlobeRotation(globeMaterial, pov.lng, pov.lat);
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const tick = (now) => {
+      const globe = globeEl.current;
+      if (globeMaterial) {
+        const pov = globe?.pointOfView?.();
+        if (pov) updateGlobeRotation(globeMaterial, pov.lng, pov.lat);
+      }
+      if (globe && globeReady) {
+        const selectedId = selectedIdRef.current;
+        forEachGlobeMesh(({ obj, sat }) => {
+          if (sat.lat == null || sat.lng == null) return;
+          placeOnGlobe(obj, globe, sat.lat, sat.lng, meshObjectAltitude(sat));
+          const isSelected = sat.id === selectedId;
+          applySelectionScale(obj, isSelected, { station: sat.group === 'station' });
+          applySelectionHighlight(obj, isSelected, { station: sat.group === 'station', timeMs: now });
+          const scale = obj.scale.x || 3.6;
+          retuneDownlinkOnObject(obj, sat, scale, downlinkReachLength(sat, scale));
+          if (!reducedMotion) tickDownlinkOnObject(obj, now);
+        });
+      }
       frame = requestAnimationFrame(tick);
     };
-    tick();
+    tick(performance.now());
     return () => cancelAnimationFrame(frame);
   }, [globeReady, globeMaterial]);
 
@@ -160,228 +318,280 @@ export default function App() {
     updateGlobeRotation(globeMaterial, lng, lat);
   }, [globeMaterial]);
 
-  const filteredSatellites = useMemo(() => {
-    return satellites.filter(s => {
-      const matchesFilter = filter === 'all' || s.group === filter;
-      const matchesSearch = !search ||
-        s.name.toLowerCase().includes(search.toLowerCase()) ||
-        String(s.catId).includes(search);
-      return matchesFilter && matchesSearch;
-    });
-  }, [satellites, filter, search]);
+  const layerCatalogKey = useMemo(
+    () => catalogKey(satellitesMaster.current, filter, search),
+    [uiTick, filter, search],
+  );
 
-  const pathData = useMemo(() => {
-    return filteredSatellites.slice(0, 80).map(sat => {
-      const points = [];
-      const steps = 60;
-      const incRad = (sat.inclination || 51.6) * (Math.PI / 180);
-      const altNorm = Math.min(Math.max((sat.alt || 400) / 2000, 0.05), 0.5);
+  const filteredSatellites = useMemo(
+    () => filterSatellites(satellitesMaster.current, filter, search),
+    [layerCatalogKey, filter, search, uiTick],
+  );
 
-      for (let i = 0; i <= steps; i++) {
-        const t = (i / steps) * 2 * Math.PI;
-        const lat = Math.asin(Math.sin(incRad) * Math.sin(t)) * (180 / Math.PI);
-        const lng = (sat.lng + (i / steps) * 360) % 360 - 180;
-        points.push([lat, lng, altNorm]);
-      }
+  const globeLayerData = useMemo(
+    () => filteredSatellites,
+    [layerCatalogKey],
+  );
 
-      return {
-        id: sat.id,
-        color: sat.group === 'station' ? GLOBE.station : GLOBE.satellite,
-        points,
-      };
-    });
-  }, [filteredSatellites]);
+  const selectedDisplay = useMemo(() => {
+    if (!selectedSat) return null;
+    return satellitesMaster.current.find(s => s.id === selectedSat.id) ?? selectedSat;
+  }, [selectedSat, uiTick]);
 
-  const ringData = useMemo(() => {
-    return satellites
-      .filter(s => s.group === 'station' || s.name.includes('ISS') || s.name.includes('TIANGONG'))
-      .map(s => ({
-        lat: s.lat,
-        lng: s.lng,
-        maxR: 8,
-        propagationSpeed: 3,
-        repeatPeriod: 1500,
-        color: s.name.includes('ISS') ? GLOBE.ringIss : GLOBE.ringStation,
-      }));
-  }, [satellites]);
+  useEffect(() => {
+    pruneGlobeMeshRegistry(new Set(filteredSatellites.map(s => s.id)));
+  }, [layerCatalogKey, filteredSatellites]);
 
-  const focusSat = useCallback((sat) => {
-    setSelectedSat(sat);
-    if (globeEl.current && sat) {
-      globeEl.current.pointOfView(
-        { lat: sat.lat, lng: sat.lng, altitude: 1.8 },
-        1200,
-      );
+  const customThreeObject = useCallback((d) => {
+    const mesh = getGlobeSatObject(d, false);
+    mesh.userData.satId = d.id;
+    mesh.userData.baseScale = mesh.scale.x;
+    registerGlobeMesh(d.id, mesh, d);
+    return mesh;
+  }, []);
+
+  const customThreeObjectUpdate = useCallback((obj, d) => {
+    registerGlobeMesh(d.id, obj, d);
+    const globe = globeEl.current;
+    if (globe && d.lat != null && d.lng != null) {
+      placeOnGlobe(obj, globe, d.lat, d.lng, meshObjectAltitude(d));
     }
   }, []);
+
+  const pointColorFn = useCallback((d) => {
+    if (d.id === selectedSat?.id) return GLOBE_UI.selected;
+    if (d.id === hoverSat?.id) return GLOBE_UI.hover;
+    return getGroupColor(d);
+  }, [selectedSat, hoverSat]);
+
+  useEffect(() => {
+    if (!globeReady || !globeMaterial) return undefined;
+    const renderer = globeEl.current?.renderer?.();
+    if (!renderer) return undefined;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    globeMaterial.userData?.tuneRenderer?.(renderer);
+    return undefined;
+  }, [globeReady, globeMaterial]);
+
+  useEffect(() => {
+    if (!globeReady || isMobileGlobe) {
+      setHoverSat(null);
+      return undefined;
+    }
+
+    const onMove = (event) => {
+      const globe = globeEl.current;
+      if (!globe?.toGlobeCoords) return;
+      const coords = globe.toGlobeCoords({ x: event.clientX, y: event.clientY });
+      if (!coords) {
+        setHoverSat(null);
+        return;
+      }
+      setHoverSat(findNearestSatellite(coords.lat, coords.lng, satellitesMaster.current, PROXIMITY_DEG));
+    };
+
+    const onLeave = () => setHoverSat(null);
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseleave', onLeave);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseleave', onLeave);
+    };
+  }, [globeReady, isMobileGlobe, filteredSatellites]);
+
+  const selectSat = useCallback((sat) => {
+    if (!sat) return;
+    setSelectedSat(sat);
+    setAutoRotate(false);
+    const controls = globeEl.current?.controls?.();
+    if (controls) controls.autoRotate = false;
+    setMobileView('track');
+  }, []);
+
+  const focusSat = useCallback((sat) => {
+    selectSat(sat);
+    if (globeEl.current && sat) {
+      const targetAlt = 1.8;
+      globeEl.current.pointOfView(
+        { lat: sat.lat, lng: sat.lng, altitude: targetAlt },
+        1200,
+      );
+      setZoomAlt(targetAlt);
+    }
+  }, [selectSat]);
 
   const handleFilterChange = (id) => {
     setFilter(id);
   };
 
-  const stationsCount = satellites.filter(s => s.group === 'station').length;
-  const visualCount = satellites.filter(s => s.group === 'visual').length;
+  const stationsCount = satellitesMaster.current.filter(s => s.group === 'station').length;
+  const visualCount = satellitesMaster.current.filter(s => s.group !== 'station').length;
+  const trackedCount = satellitesMaster.current.length;
 
-  const renderMarker = useCallback((d) => {
-    const el = document.createElement('div');
-    const isSelected = selectedSat?.id === d.id;
-    const isStation = d.group === 'station';
-    el.className = [
-      'zg-marker',
-      isSelected ? 'is-selected' : '',
-      isStation ? 'is-station' : '',
-    ].filter(Boolean).join(' ');
-    el.innerHTML = `<span>${getSatelliteFlag(d)}</span><span>${d.name}</span>`;
-    el.onclick = (e) => {
-      e.stopPropagation();
-      focusSat(d);
-    };
-    return el;
-  }, [selectedSat, focusSat]);
+  const refreshBtnClass = `zg-btn zg-btn--icon zg-btn--ghost${fetchState === 'loading' ? ' is-loading' : ''}${fetchState === 'error' ? ' is-error' : ''}`;
 
   const trackPanel = (
     <>
-      <div className="zg-input-wrap">
-        <Search className="w-4 h-4 zg-icon" aria-hidden="true" />
-        <input
-          type="search"
-          className="zg-input"
-          placeholder="Name or NORAD ID"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          aria-label="Search satellites"
-        />
+      <div className="zg-panel__bar">
+        <h2 className="zg-panel__head">Orbital track</h2>
+        {isDemo && <span className="zg-demo-badge">Demo data</span>}
       </div>
 
-      <div className="zg-tabs" role="tablist" aria-label="Satellite filters">
-        {[
-          { id: 'all', label: `All ${satellites.length}` },
-          { id: 'station', label: `Sta ${stationsCount}` },
-          { id: 'visual', label: `Vis ${visualCount}` },
-        ].map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={filter === tab.id}
-            className={`zg-tab${filter === tab.id ? ' is-active' : ''}`}
-            onClick={(e) => {
-              handleFilterChange(tab.id);
-              e.currentTarget.focus({ preventScroll: true });
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="zg-panel__controls">
+        <div className="zg-input-wrap">
+          <Search className="zg-icon zg-icon-md" aria-hidden="true" />
+          <input
+            type="search"
+            className="zg-input"
+            placeholder="Name or NORAD ID"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            aria-label="Search satellites"
+          />
+        </div>
+
+        <div className="zg-tabs" role="tablist" aria-label="Satellite filters">
+          {[
+            { id: 'all', short: `All ${trackedCount}`, long: `All ${trackedCount}` },
+            { id: 'station', short: `Sta ${stationsCount}`, long: `Stations ${stationsCount}` },
+            { id: 'visual', short: `Sats ${visualCount}`, long: `Satellites ${visualCount}` },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={filter === tab.id}
+              className={`zg-tab${filter === tab.id ? ' is-active' : ''}`}
+              onClick={(e) => {
+                handleFilterChange(tab.id);
+                e.currentTarget.focus({ preventScroll: true });
+              }}
+            >
+              <span className="zg-tab__short">{tab.short}</span>
+              <span className="zg-tab__long">{tab.long}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {selectedSat && (
+      {selectedDisplay && (
         <div className="zg-inspect">
-          <div className="flex items-center gap-2">
-            <span className="text-base" aria-hidden="true">{getSatelliteFlag(selectedSat)}</span>
-            <span className={`zg-tag${selectedSat.group === 'station' ? ' zg-tag--station' : ''}`}>
-              {selectedSat.group}
+          <div className="zg-row zg-row--start">
+            <span className="zg-flag" aria-hidden="true">{getSatelliteFlag(selectedDisplay)}</span>
+            <span className={`zg-tag zg-tag--${selectedDisplay.group || 'visual'}`}>
+              {getGroupLabel(selectedDisplay)}
             </span>
           </div>
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="zg-inspect__name">{selectedSat.name}</h3>
-              <p className="zg-panel__hint">NORAD #{selectedSat.catId || selectedSat.id}</p>
+          <div className="zg-row zg-row--between">
+            <div className="zg-min-w-0">
+              <h3 className="zg-inspect__name">{selectedDisplay.name}</h3>
+              <p className="zg-panel__hint zg-inspect__meta">NORAD #{selectedDisplay.catId || selectedDisplay.id}</p>
             </div>
             <button
               type="button"
-              className="zg-btn zg-btn--icon zg-btn--ghost"
-              onClick={() => focusSat(selectedSat)}
+              className="zg-btn zg-btn--icon zg-btn--ghost zg-shrink-0"
+              onClick={() => focusSat(selectedDisplay)}
               aria-label="Lock camera on target"
             >
-              <Compass className="w-4 h-4 zg-icon" />
+              <Compass className="zg-icon zg-icon-md" />
             </button>
           </div>
           <div className="zg-grid">
             <div className="zg-stat">
               <div className="zg-stat__label">Latitude</div>
-              <div className="zg-stat__value">{selectedSat.lat?.toFixed(4)}°</div>
+              <div className="zg-stat__value">{selectedDisplay.lat?.toFixed(4)}°</div>
             </div>
             <div className="zg-stat">
               <div className="zg-stat__label">Longitude</div>
-              <div className="zg-stat__value">{selectedSat.lng?.toFixed(4)}°</div>
+              <div className="zg-stat__value">{selectedDisplay.lng?.toFixed(4)}°</div>
             </div>
             <div className="zg-stat">
               <div className="zg-stat__label">Altitude</div>
-              <div className="zg-stat__value">{selectedSat.alt ?? '—'} km</div>
+              <div className="zg-stat__value">{selectedDisplay.alt ?? '—'} km</div>
+            </div>
+            <div className="zg-stat">
+              <div className="zg-stat__label">Orbit band</div>
+              <div className="zg-stat__value">{altitudeBandLabel(selectedDisplay)}</div>
             </div>
             <div className="zg-stat">
               <div className="zg-stat__label">Velocity</div>
               <div className="zg-stat__value">
-                {selectedSat.velocity != null ? `${selectedSat.velocity} km/s` : '—'}
+                {selectedDisplay.velocity != null ? `${selectedDisplay.velocity} km/s` : '—'}
               </div>
             </div>
           </div>
-          {selectedSat.inclination != null && (
-            <p className="zg-panel__hint mt-2">
-              Inclination {selectedSat.inclination}°
+          {selectedDisplay.inclination != null && (
+            <p className="zg-panel__hint">
+              Inclination {selectedDisplay.inclination}°
             </p>
           )}
         </div>
       )}
 
-      <div className="zg-list" role="list">
-        <p className="zg-panel__hint px-1">
+      <div className="zg-panel__list">
+        <p className="zg-list__meta">
           {filteredSatellites.length} objects in view
         </p>
-        {filteredSatellites.slice(0, 50).map(sat => (
-          <button
-            key={sat.id}
-            type="button"
-            role="listitem"
-            className={`zg-list-item${selectedSat?.id === sat.id ? ' is-active' : ''}`}
-            onClick={() => focusSat(sat)}
-          >
-            <span className="flex items-center gap-2 min-w-0 truncate">
-              <span aria-hidden="true">{getSatelliteFlag(sat)}</span>
-              <span className="zg-sat-name truncate">{sat.name}</span>
-            </span>
-            <span className={`zg-tag${sat.group === 'station' ? ' zg-tag--station' : ''}`}>
-              {sat.alt}km
-            </span>
-          </button>
-        ))}
+        <div className="zg-list" role="list">
+          {filteredSatellites.slice(0, 50).map(sat => (
+            <button
+              key={sat.id}
+              type="button"
+              role="listitem"
+              className={`zg-list-item${selectedSat?.id === sat.id ? ' is-active' : ''}`}
+              onClick={() => focusSat(sat)}
+            >
+              <span className="zg-row zg-row--start zg-min-w-0 zg-truncate">
+                <span aria-hidden="true">{getSatelliteFlag(sat)}</span>
+                <span className="zg-sat-name zg-truncate">{sat.name}</span>
+              </span>
+              <span className="zg-row zg-row--end zg-shrink-0">
+                <span className={`zg-tag zg-tag--${sat.group || 'visual'}`}>
+                  {getGroupAbbrev(sat)}
+                </span>
+                <span className="zg-list-item__alt">{sat.alt} km</span>
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
     </>
   );
 
   const crewPanel = (
     <>
-      <div className="flex items-center justify-between gap-2">
+      <div className="zg-panel__bar">
         <h2 className="zg-panel__head">Crew roster</h2>
         <span className="zg-tag">{crew.length} onboard</span>
       </div>
-      <div className="zg-list">
-        {crew.length > 0 ? (
-          crew.map((ast, idx) => (
-            <div key={idx} className="zg-crew-row">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-base shrink-0" aria-hidden="true">{getCrewFlag(ast)}</span>
-                <div className="min-w-0">
-                  <div className="zg-crew-row__name truncate">{ast.name}</div>
-                  <div className="zg-panel__hint">Astronaut</div>
+      <div className="zg-panel__list">
+        <div className="zg-list">
+          {crew.length > 0 ? (
+            crew.map((ast, idx) => (
+              <div key={idx} className="zg-crew-row">
+                <div className="zg-row zg-row--start zg-min-w-0">
+                  <span className="zg-flag zg-shrink-0" aria-hidden="true">{getCrewFlag(ast)}</span>
+                  <div className="zg-min-w-0">
+                    <div className="zg-crew-row__name zg-truncate">{ast.name}</div>
+                    <div className="zg-panel__hint">{ast.craft || '—'}</div>
+                  </div>
                 </div>
+                <span className="zg-tag zg-shrink-0">{ast.craft || 'ISS'}</span>
               </div>
-              <span className="zg-tag">{ast.craft || 'ISS'}</span>
-            </div>
-          ))
-        ) : (
-          <p className="zg-panel__hint p-2 text-center">Loading roster…</p>
-        )}
+            ))
+          ) : (
+            <p className="zg-panel__hint zg-p-sm zg-text-center">Loading roster…</p>
+          )}
+        </div>
       </div>
     </>
   );
 
   return (
     <div className="zg-shell">
-      {/* Hallmark · genre: atmospheric · macrostructure: Workbench · theme: Midnight · enrichment: none · nav: N9 · footer: Ft2 */}
-
-      <div className="zg-canvas" aria-hidden="true">
+      <div className="zg-canvas-wrap">
+        <div className="zg-canvas" aria-hidden="true">
         <Globe
           ref={globeEl}
           width={dimensions.width}
@@ -394,106 +604,133 @@ export default function App() {
           }}
           onZoom={handleGlobeZoom}
           showAtmosphere
-          atmosphereColor={GLOBE.atmosphere}
-          atmosphereAltitude={0.18}
-          pointsData={filteredSatellites}
+          atmosphereColor={GLOBE_UI.atmosphere}
+          atmosphereAltitude={0.22}
+          pointsData={globeLayerData}
           pointLat="lat"
           pointLng="lng"
-          pointAltitude={d => Math.min(Math.max((d.alt || 400) / 2000, 0.05), 0.5)}
-          pointColor={d => (d.id === selectedSat?.id ? GLOBE.selected : d.group === 'station' ? GLOBE.station : GLOBE.satellite)}
-          pointRadius={d => (d.id === selectedSat?.id ? 0.9 : d.group === 'station' ? 0.65 : 0.4)}
-          pointResolution={16}
-          onPointClick={focusSat}
-          htmlElementsData={filteredSatellites.filter(s => s.group === 'station' || s.id === selectedSat?.id)}
-          htmlLat="lat"
-          htmlLng="lng"
-          htmlAltitude={d => Math.min(Math.max((d.alt || 400) / 2000, 0.05), 0.5) + 0.03}
-          htmlElement={renderMarker}
-          pathsData={pathData}
-          pathPoints="points"
-          pathPointLat={p => p[0]}
-          pathPointLng={p => p[1]}
-          pathPointAlt={p => p[2]}
-          pathColor="color"
-          pathStroke={1.1}
-          pathDashLength={0.15}
-          pathDashGap={0.05}
-          pathDashAnimateTime={5000}
-          ringsData={ringData}
-          ringColor="color"
-          ringMaxRadius="maxR"
-          ringPropagationSpeed="propagationSpeed"
-          ringRepeatPeriod="repeatPeriod"
+          pointAltitude={(d) => satelliteDisplayAltitude(d)}
+          pointColor={pointColorFn}
+          pointRadius={() => 0}
+          pointResolution={8}
+          onPointClick={(d) => focusSat(d)}
+          customLayerData={globeLayerData}
+          customThreeObject={customThreeObject}
+          customThreeObjectUpdate={customThreeObjectUpdate}
+          onCustomLayerClick={(d) => focusSat(d)}
+          onCustomLayerHover={(d) => {
+            if (!isMobileGlobe) setHoverSat(d || null);
+          }}
         />
+        </div>
+        <div className="zg-canvas-vignette" aria-hidden="true" />
+
+        <div className="zg-zoom" aria-label="Globe zoom">
+          <button
+            type="button"
+            className="zg-btn zg-btn--icon zg-zoom__btn"
+            onClick={() => nudgeZoom(1)}
+            aria-label="Zoom in"
+          >
+            <ZoomIn className="zg-icon zg-icon-md" />
+          </button>
+          <input
+            type="range"
+            className="zg-zoom__range"
+            min={0}
+            max={100}
+            value={zoomToSlider(zoomAlt)}
+            onChange={(e) => setGlobeAltitude(sliderToZoom(Number(e.target.value)))}
+            aria-label="Zoom level"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={zoomToSlider(zoomAlt)}
+          />
+          <button
+            type="button"
+            className="zg-btn zg-btn--icon zg-zoom__btn"
+            onClick={() => nudgeZoom(-1)}
+            aria-label="Zoom out"
+          >
+            <ZoomOut className="zg-icon zg-icon-md" />
+          </button>
+        </div>
       </div>
 
       <header className="zg-nav">
         <div className="zg-brand">
-          <h1 className="zg-brand__title">ZeroGravity</h1>
+          <h1 className="zg-brand__title">
+            Zero<span className="zg-brand__accent">Gravity</span>
+          </h1>
           <p className="zg-brand__sub">Live NORAD telemetry</p>
+          {isDemo && <span className="zg-demo-badge zg-demo-badge--inline">Local demo mode</span>}
         </div>
 
         <div className="zg-metrics" aria-label="Summary metrics">
           <span className="zg-metric">
-            <Satellite className="w-3.5 h-3.5 zg-icon zg-icon--accent" aria-hidden="true" />
-            <strong>{satellites.length}</strong>
+            <Satellite className="zg-icon zg-icon-sm zg-icon--accent" aria-hidden="true" />
+            <strong>{trackedCount}</strong>
             <span className="zg-metric__label">tracked</span>
           </span>
           <span className="zg-metric">
-            <Radio className="w-3.5 h-3.5 zg-icon" aria-hidden="true" />
+            <Radio className="zg-icon zg-icon-sm" aria-hidden="true" />
             <strong>{stationsCount}</strong>
             <span className="zg-metric__label">stations</span>
           </span>
           <span className="zg-metric zg-metric--live">
-            <Users className="w-3.5 h-3.5 zg-icon" aria-hidden="true" />
+            <Users className="zg-icon zg-icon-sm" aria-hidden="true" />
             <strong>{crew.length}</strong>
             <span className="zg-metric__label">crew</span>
           </span>
-          <span className="zg-metric">
-            <ShieldCheck className="w-3.5 h-3.5 zg-icon" aria-hidden="true" />
+          <span className={`zg-metric${fetchState === 'error' ? ' zg-metric--error' : ''}`}>
+            <ShieldCheck className="zg-icon zg-icon-sm" aria-hidden="true" />
             <span className="zg-metric__label">source</span>
-            <span className="zg-metric__value">{source}</span>
+            <span className={`zg-metric__value${isDemo ? ' zg-metric__value--demo' : ''}${fetchState === 'error' ? ' zg-metric__value--error' : ''}`}>{source}</span>
           </span>
           <button
             type="button"
-            className="zg-btn zg-btn--icon zg-btn--ghost"
+            className={refreshBtnClass}
             onClick={fetchData}
+            disabled={fetchState === 'loading'}
+            aria-busy={fetchState === 'loading'}
             aria-label="Refresh telemetry"
           >
-            <RefreshCw className="w-4 h-4 zg-icon" />
+            <RefreshCw className={`zg-icon zg-icon-md${fetchState === 'loading' ? ' zg-icon--spin' : ''}`} />
           </button>
         </div>
 
         <div className="zg-nav__actions">
           <button
             type="button"
-            className="zg-btn zg-btn--icon zg-btn--ghost"
+            className={refreshBtnClass}
             onClick={fetchData}
+            disabled={fetchState === 'loading'}
+            aria-busy={fetchState === 'loading'}
             aria-label="Refresh telemetry"
           >
-            <RefreshCw className="w-4 h-4 zg-icon" />
+            <RefreshCw className={`zg-icon zg-icon-md${fetchState === 'loading' ? ' zg-icon--spin' : ''}`} />
           </button>
         </div>
 
         <div className="zg-mobile-metrics" aria-label="Summary metrics">
           <span className="zg-mobile-metric">
-            <Satellite className="w-3.5 h-3.5 zg-icon zg-icon--accent" aria-hidden="true" />
-            <strong>{satellites.length}</strong>
+            <Satellite className="zg-icon zg-icon-sm zg-icon--accent" aria-hidden="true" />
+            <strong>{trackedCount}</strong>
             <span>tracked</span>
           </span>
           <span className="zg-mobile-metric">
-            <Radio className="w-3.5 h-3.5 zg-icon" aria-hidden="true" />
+            <Radio className="zg-icon zg-icon-sm" aria-hidden="true" />
             <strong>{stationsCount}</strong>
             <span>stations</span>
           </span>
           <span className="zg-mobile-metric zg-mobile-metric--live">
-            <Users className="w-3.5 h-3.5 zg-icon" aria-hidden="true" />
+            <Users className="zg-icon zg-icon-sm" aria-hidden="true" />
             <strong>{crew.length}</strong>
             <span>crew</span>
           </span>
-          <span className="zg-mobile-metric">
-            <ShieldCheck className="w-3.5 h-3.5 zg-icon" aria-hidden="true" />
-            <span className="zg-mobile-metric__value">{source}</span>
+          <span className={`zg-mobile-metric${fetchState === 'error' ? ' zg-mobile-metric--error' : ''}`}>
+            <ShieldCheck className="zg-icon zg-icon-sm" aria-hidden="true" />
+            <span className={`zg-mobile-metric__value${fetchState === 'error' ? ' zg-mobile-metric__value--error' : ''}`}>{source}</span>
           </span>
         </div>
       </header>
@@ -502,7 +739,7 @@ export default function App() {
         className={`zg-rail zg-rail--left${mobileView !== 'track' ? ' is-hidden' : ''}`}
         aria-label="Satellite tracking"
       >
-        <div className="zg-panel flex-1 min-h-0 overflow-hidden">
+        <div className="zg-panel zg-panel--flex">
           {trackPanel}
         </div>
       </aside>
@@ -511,18 +748,34 @@ export default function App() {
         className={`zg-rail zg-rail--right${mobileView === 'crew' ? ' is-open' : ''}`}
         aria-label="Crew roster"
       >
-        <div className="zg-panel flex-1 min-h-0 overflow-hidden">
+        <div className="zg-panel zg-panel--flex">
           {crewPanel}
         </div>
       </aside>
 
       <footer className="zg-footer">
-        <span className="flex items-center gap-2">
+        <span className="zg-row zg-row--start">
           <span className="zg-live-dot" aria-hidden="true" />
-          <span className="hidden sm:inline zg-footer__status">Orbital feed active</span>
-          <span className="sm:hidden zg-footer__status">Live</span>
-          <span className="hidden md:inline zg-footer__sync">· sync {lastSync.toLocaleTimeString()}</span>
+          <span className="zg-footer__status zg-hide-sm">Orbital feed active</span>
+          <span className="zg-footer__status zg-show-sm">Live</span>
+          <span className="zg-footer__sync zg-hide-md">· sync {lastSync.toLocaleTimeString()}</span>
         </span>
+        <div className="zg-type-legend zg-type-legend--desktop" aria-label="Satellite types">
+          {Object.entries(GROUP_META).map(([key, meta]) => (
+            <span key={key} className="zg-type-legend__item">
+              <i className={`zg-type-legend__dot zg-type-legend__dot--${key}`} />
+              {meta.label}
+            </span>
+          ))}
+        </div>
+        <div className="zg-type-legend zg-type-legend--mobile" aria-label="Satellite types">
+          {Object.entries(GROUP_META).map(([key, meta]) => (
+            <span key={key} className="zg-type-legend__item" title={meta.label}>
+              <i className={`zg-type-legend__dot zg-type-legend__dot--${key}`} />
+              <span className="zg-type-legend__abbr">{meta.label.slice(0, 3)}</span>
+            </span>
+          ))}
+        </div>
         <button
           type="button"
           className={`zg-btn zg-btn--compact${autoRotate ? ' zg-btn--active' : ''}`}

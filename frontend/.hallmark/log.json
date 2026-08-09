@@ -4,6 +4,17 @@
     "macrostructure": "Workbench",
     "theme": "Midnight",
     "enrichment": "none",
+    "brief": "ZeroGravity frontend · token discipline + interaction polish",
+    "theme_axes": "dark / grotesk-sans / warm",
+    "genre": "atmospheric",
+    "scope": "app",
+    "design-system": "design.md"
+  },
+  {
+    "date": "2026-08-09",
+    "macrostructure": "Workbench",
+    "theme": "Midnight",
+    "enrichment": "none",
     "brief": "ZeroGravity frontend · Midnight atmospheric redesign",
     "theme_axes": "dark / grotesk-sans / warm",
     "genre": "atmospheric"
