@@ -584,6 +584,7 @@ export default function App() {
       <div className="zg-panel__bar">
         <h2 className="zg-panel__head">catalog</h2>
         {source === 'demo' && <span className="zg-term-badge">[DEMO]</span>}
+        {source === 'seed' && <span className="zg-term-badge">[SNAPSHOT]</span>}
         {source === 'fallback' && <span className="zg-term-badge">[CACHE]</span>}
       </div>
 
@@ -781,6 +782,9 @@ export default function App() {
             <span className="zg-brand__tag">norad telemetry</span>
           </h1>
           {isDemo && <span className="zg-term-badge zg-term-badge--inline">[DEMO]</span>}
+          {source === 'seed' && !isDemo && (
+            <span className="zg-term-badge zg-term-badge--inline">[SNAPSHOT]</span>
+          )}
           {source === 'fallback' && !isDemo && (
             <span className="zg-term-badge zg-term-badge--inline">[CACHE]</span>
           )}

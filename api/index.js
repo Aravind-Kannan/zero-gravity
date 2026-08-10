@@ -1,7 +1,20 @@
+const fs = require('node:fs');
+const path = require('node:path');
 const express = require('express');
 const cors = require('cors');
 const Redis = require('ioredis');
 const satellite = require('satellite.js');
+
+function loadSeedJson(filename) {
+  try {
+    const filePath = path.join(__dirname, filename);
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch (err) {
+    console.warn(`[API] Could not load ${filename}:`, err.message);
+    return null;
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,6 +46,16 @@ const FALLBACK_SATELLITES = [
   { id: 27424, name: 'AQUA', catId: 27424, lat: 55.2341, lng: -120.3412, alt: 705.3, inclination: 98.20, group: 'visual', velocity: 7.50 },
   { id: 43013, name: 'TESS', catId: 43013, lat: 40.1298, lng: -105.2389, alt: 500.4, inclination: 28.50, group: 'visual', velocity: 7.61 }
 ];
+
+const SEED_SATELLITES_RAW = loadSeedJson('fallback-satellites.json');
+const SEED_CREW = loadSeedJson('fallback-crew.json');
+
+if (SEED_SATELLITES_RAW) {
+  console.log(`[API] Loaded ${SEED_SATELLITES_RAW.length} satellites from bundled CelesTrak snapshot`);
+}
+if (SEED_CREW) {
+  console.log(`[API] Loaded ${SEED_CREW.length} crew members from bundled snapshot`);
+}
 
 const FALLBACK_CREW = [
   { name: 'Oleg Kononenko', craft: 'ISS' },
@@ -141,10 +164,20 @@ app.get('/api/satellites', async (req, res) => {
         });
       }
     }
-    console.log('[API] Cache empty/warming, serving fallback satellite dataset');
+    if (SEED_SATELLITES_RAW) {
+      const computed = propagateSatellites(SEED_SATELLITES_RAW);
+      console.log(`[API] Cache empty/warming, serving ${computed.length} satellites from bundled CelesTrak snapshot`);
+      return res.json({ source: 'seed', count: computed.length, satellites: computed });
+    }
+
+    console.log('[API] Cache empty/warming, serving inline fallback satellite dataset');
     res.json({ source: 'fallback', count: FALLBACK_SATELLITES.length, satellites: FALLBACK_SATELLITES });
   } catch (err) {
     console.error('[API] GET /api/satellites error:', err.message);
+    if (SEED_SATELLITES_RAW) {
+      const computed = propagateSatellites(SEED_SATELLITES_RAW);
+      return res.json({ source: 'seed', count: computed.length, satellites: computed });
+    }
     res.json({ source: 'fallback', count: FALLBACK_SATELLITES.length, satellites: FALLBACK_SATELLITES });
   }
 });
@@ -158,11 +191,13 @@ app.get('/api/crew', async (req, res) => {
         return res.json({ source: 'cache', count: crewList.length, crew: crewList });
       }
     }
-    console.log('[API] Cache empty/warming, serving fallback crew roster');
-    res.json({ source: 'fallback', count: FALLBACK_CREW.length, crew: FALLBACK_CREW });
+    const crew = SEED_CREW || FALLBACK_CREW;
+    console.log(`[API] Cache empty/warming, serving ${crew.length} crew from ${SEED_CREW ? 'bundled snapshot' : 'inline fallback'}`);
+    res.json({ source: SEED_CREW ? 'seed' : 'fallback', count: crew.length, crew });
   } catch (err) {
     console.error('[API] GET /api/crew error:', err.message);
-    res.json({ source: 'fallback', count: FALLBACK_CREW.length, crew: FALLBACK_CREW });
+    const crew = SEED_CREW || FALLBACK_CREW;
+    res.json({ source: SEED_CREW ? 'seed' : 'fallback', count: crew.length, crew });
   }
 });
 
